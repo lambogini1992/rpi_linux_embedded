@@ -1,4 +1,3 @@
-#include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/fs.h>
@@ -71,7 +70,7 @@ static ssize_t dev_read(struct file*filep, char __user *buf, size_t len, loff_t 
 	{
 		return -EFAULT;
 	}
-	printk("successfully to copy data\n");
+	printk("successfully to copy data %d\n", (int *)exam_char.hw_reg->data_reg);
 
 	return 0;
 }
