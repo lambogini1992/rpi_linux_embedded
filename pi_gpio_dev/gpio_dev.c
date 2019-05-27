@@ -41,17 +41,10 @@ static struct file_operations fops = {
 	.write = dev_write,
 };
 
-static int init_gpio_base(void)
+static void init_gpio_base(void)
 {
-	if(gpio_base == NULL)
-	{
-		gpio_base = ioremap_nocache(GPIO_BASE, TOTAL_GPIO_REG);
-		if(NULL == gpio_base)
-		{
-			return 0;
-		}
-	}
-	return 1;
+	gpio_base = (volatile uint32_t *)ioremap(GPIO_BASE, TOTAL_GPIO_REG);
+	printk("%d\n", *gpio_base);
 }
 
 static void release_gpio(void)
@@ -60,47 +53,15 @@ static void release_gpio(void)
 	gpio_base = NULL;
 }
 
-static int set_func_pin(uint16_t pin, uint8_t func)
+static void set_func_pin(uint16_t pin, uint8_t func)
 {
-	uint16_t ma_num;
-	uint16_t mi_num;
+	uint16_t index_selreg;
+	uint16_t shift;
 
-	ma_num = pin%10;
-	mi_num = pin/10;
+	index_selreg = GPFSEL0 + pin/10;
+	shift = (pin % 10) * 3;
 
-	switch(ma_num)
-	{
-		case 0:
-			gpio_base[GPFSEL0] |= func << mi_num;
-			break;
-		
-		case 1:
-			gpio_base[GPFSEL1] |= func << mi_num;
-			break;		
-		
-		case 2:
-			gpio_base[GPFSEL2] |= func << mi_num;
-			break;
-
-		case 3:
-			gpio_base[GPFSEL3] |= func << mi_num;
-			break;
-
-		case 4:
-			gpio_base[GPFSEL4] |= func << mi_num;
-			break;
-
-		case 5:
-			gpio_base[GPFSEL5] |= func << mi_num;
-			break;
-
-		default:
-			printk("Out of range pin\n");
-			return -1;
-			break;				
-	}
-	gpio_infor_dev.input_count = 1;
-	return 0;
+	gpio_base[index_selreg] = gpio_base[index_selreg] | ((func * 0x07) << shift);
 }
 
 static int set_level_pin(uint16_t pin, uint8_t level)
@@ -159,6 +120,8 @@ static uint8_t read_level_gpio(uint16_t pin)
 
 static int dev_open(struct inode *inodep, struct file *filep)
 {
+	init_gpio_base();
+
 	gpio_infor_dev.gpio_pin = 21;
 	printk("open gpio pin %d", gpio_infor_dev.gpio_pin);
 	return 0;
@@ -168,6 +131,9 @@ static int dev_close(struct inode *inodep, struct file *filep)
 {
 	printk("close gpio pin %d", gpio_infor_dev.gpio_pin);
 	gpio_infor_dev.gpio_pin = 0;
+
+	release_gpio();
+
 	return 0;
 }
 
@@ -206,27 +172,26 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 	}
 
 	kernel_buff[len] = '\0';
-	printk("%s\n", kernel_buff);
 
-	if(strcmp(kernel_buff, "in") == 1)
+	if(strcmp((const char *)kernel_buff, "in") == 0)
 	{
 		printk("in\n");
 		gpio_infor_dev.gpio_sel = 0;
 		set_func_pin(gpio_infor_dev.gpio_pin, 0x00);
 	}
-	else if(strcmp(kernel_buff, "out") == 1)
+	else if(strcmp((const char *)kernel_buff, "out") == 0)
 	{
 		printk("out\n");
 		gpio_infor_dev.gpio_sel = 1;
 		set_func_pin(gpio_infor_dev.gpio_pin, 0x01);
 	}
-	else if(strcmp(kernel_buff, "high") == 1)
+	else if(strcmp((const char *)kernel_buff, "high") == 0)
 	{
 		printk("high\n");
 		gpio_infor_dev.set_level = 1;
 		set_level_pin(gpio_infor_dev.gpio_pin, 0x01);
 	}
-	else if(strcmp(kernel_buff, "low") == 0)
+	else if(strcmp((const char *)kernel_buff, "low") == 0)
 	{
 		printk("low\n");
 		gpio_infor_dev.set_level = 1;
@@ -282,19 +247,10 @@ static int __init gpio_init(void)
 		printk("fail to add device file into device number\n");
 		goto fail_alloc_cdev;
 	}
-	
-	ret_val = init_gpio_base();
-	if(ret_val == 0)
-	{
-		printk("Fail to initialize gpio register\n");
-		goto fail_init_gpio_reg;
-	}
-	memset(&gpio_infor_dev, 0, sizeof(gpio_infor_dev));
 	printk("successfully create gpio device driver\n");
+
 	return 0;
 
-fail_init_gpio_reg:
-	cdev_del(gpio_dev.cdev_dev);
 fail_alloc_cdev:
 	device_destroy(gpio_dev.dev_cls, gpio_dev.dev_num);
 fail_register_device:
@@ -307,8 +263,6 @@ fail_register_class:
 static void __exit gpio_exit(void)
 {
 	printk("Release gpio device driver\n");
-
-	release_gpio();
 
 	cdev_del(gpio_dev.cdev_dev);
 
