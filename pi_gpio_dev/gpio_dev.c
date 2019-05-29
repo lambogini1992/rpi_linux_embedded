@@ -158,7 +158,11 @@ static ssize_t dev_read(struct file*filep, char __user *buf, size_t len, loff_t 
 static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, loff_t *offset)
 {
 	char *kernel_buff;
+	char *buff_cmd;
+
 	kernel_buff = kzalloc(len, GFP_KERNEL);
+	buff_cmd 	= kzalloc(len, GFP_KERNEL);
+
 	if(NULL == kernel_buff)
 	{
 		printk("fail to allocate select gpio pin\n");
@@ -171,25 +175,27 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 		return -EFAULT;
 	}
 
-	if(strcmp(kernel_buff, "in") == 0)
+	snprintf(buff_cmd, len, "%s", kernel_buff);
+
+	if(strcmp(buff_cmd, "in") == 0)
 	{
 		printk("in\n");
 		gpio_infor_dev.gpio_sel = 0;
 		set_func_pin(gpio_infor_dev.gpio_pin, 0x00);
 	}
-	else if(strcmp(kernel_buff, "out") == 0)
+	else if(strcmp(buff_cmd, "out") == 0)
 	{
 		printk("out\n");
 		gpio_infor_dev.gpio_sel = 1;
 		set_func_pin(gpio_infor_dev.gpio_pin, 0x01);
 	}
-	else if(strcmp(kernel_buff, "high") == 0)
+	else if(strcmp(buff_cmd, "high") == 0)
 	{
 		printk("high\n");
 		gpio_infor_dev.set_level = 1;
 		set_level_pin(gpio_infor_dev.gpio_pin, 0x01);
 	}
-	else if(strcmp(kernel_buff, "low") == 0)
+	else if(strcmp(buff_cmd, "low") == 0)
 	{
 		printk("low\n");
 		gpio_infor_dev.set_level = 1;
@@ -197,10 +203,6 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 	}
 	else
 	{
-		printk("out %d\n", strcmp(kernel_buff, "out"));
-		printk("in %d\n", strcmp(kernel_buff, "in"));
-		printk("high %d\n", strcmp(kernel_buff, "high"));
-		printk("low %d\n", strcmp(kernel_buff, "low"));
 		printk("wrong syntax for gpio function\n");
 	}
 	kfree(kernel_buff);

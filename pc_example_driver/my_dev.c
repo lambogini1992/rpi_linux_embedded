@@ -123,27 +123,25 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 	}
 	printk("lenght of buff is %d \n", len);
 	buff_reg[len] = '\0';
-	printk("buff_reg is %s1\n", buff_reg);
 	snprintf(buff_str, len, "%s", buff_reg);
-	if(strncmp(buff_str, "control", len) == 0)
+	if(strcmp(buff_str, "control") == 0)
 	{
 		printk("control reg is selected\n");
 		exam_char.hw_reg->control_reg = exam_char.reg_value;
 	}
-	else if(strncmp(buff_str, "status", len) == 0)
+	else if(strcmp(buff_str, "status") == 0)
 	{
 		printk("status reg is selected\n");
 		exam_char.hw_reg->status_reg = exam_char.reg_value;
 	}
-	else if(strncmp(buff_str, "data", len) == 0)
+	else if(strcmp(buff_str, "data") == 0)
 	{
 		printk("data reg is selected\n");
 		exam_char.hw_reg->data_reg = exam_char.reg_value;
 	}
 	else
 	{
-		
-		exam_char.reg_value = *buff_reg;
+		exam_char.reg_value = buff_reg[0];
 	}
 	return len;
 }
