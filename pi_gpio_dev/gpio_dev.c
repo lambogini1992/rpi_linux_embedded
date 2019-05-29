@@ -171,27 +171,25 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 		return -EFAULT;
 	}
 
-	kernel_buff[len] = '\0';
-
-	if(strcmp((const char *)kernel_buff, "in") == 0)
+	if(strcmp(kernel_buff, "in") == 0)
 	{
 		printk("in\n");
 		gpio_infor_dev.gpio_sel = 0;
 		set_func_pin(gpio_infor_dev.gpio_pin, 0x00);
 	}
-	else if(strcmp((const char *)kernel_buff, "out") == 0)
+	else if(strcmp(kernel_buff, "out") == 0)
 	{
 		printk("out\n");
 		gpio_infor_dev.gpio_sel = 1;
 		set_func_pin(gpio_infor_dev.gpio_pin, 0x01);
 	}
-	else if(strcmp((const char *)kernel_buff, "high") == 0)
+	else if(strcmp(kernel_buff, "high") == 0)
 	{
 		printk("high\n");
 		gpio_infor_dev.set_level = 1;
 		set_level_pin(gpio_infor_dev.gpio_pin, 0x01);
 	}
-	else if(strcmp((const char *)kernel_buff, "low") == 0)
+	else if(strcmp(kernel_buff, "low") == 0)
 	{
 		printk("low\n");
 		gpio_infor_dev.set_level = 1;
@@ -199,7 +197,10 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 	}
 	else
 	{
-		// printk("%d\n", strcmp(kernel_buff, "out"));
+		printk("out %d\n", strcmp(kernel_buff, "out"));
+		printk("in %d\n", strcmp(kernel_buff, "in"));
+		printk("high %d\n", strcmp(kernel_buff, "high"));
+		printk("low %d\n", strcmp(kernel_buff, "low"));
 		printk("wrong syntax for gpio function\n");
 	}
 	kfree(kernel_buff);

@@ -21,14 +21,14 @@ struct _exam_char
 	struct class *dev_cls;
 	struct device *dev;
 	HW_DEV *hw_reg;
-	char *select_reg;
+	char reg_value;
 }exam_char;
 
 static int dev_open(struct inode *, struct file *);
 static int dev_close(struct inode *, struct file *);
 static ssize_t dev_read(struct file*, char __user *, size_t, loff_t *);
 static ssize_t dev_write(struct file *, const char __user *, size_t, loff_t *);
-
+static int buff_str_cmp(const char *buff, const char *str, int len_buf);
 static struct file_operations fops = {
 	.owner = THIS_MODULE,
 	.open = dev_open,
@@ -36,6 +36,37 @@ static struct file_operations fops = {
 	.read = dev_read,
 	.write = dev_write,
 };
+
+static int buff_str_cmp(const char *buff, const char *str, int len_buf)
+{
+	int len_temp;
+	int len_str;
+	int i, j;
+	len_temp = len_buf;
+	len_str = sizeof(str);
+	printk("sizeof str: %d\n", len_str);
+
+	for( i = 0; i < len_buf; i++)
+	{
+		for( j = 0; j < len_str; j++)
+		{
+			
+			if(buff[i] == str[j])
+			{
+				printk("buff[i] %c and str[j] %c\n", buff[i], str[j]);
+				printk("value: %d\n", len_temp);
+				len_temp--;
+				break;
+			}
+		}
+	}
+	printk("%d\n", len_temp);
+	if(len_temp == (len_buf - len_str))
+	{
+		return 1;
+	}
+	return 0;
+}
 
 static int dev_open(struct inode *inodep, struct file *filep)
 {
@@ -79,60 +110,41 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 
 	printk("write\n");
 
-	if (exam_char.select_reg == NULL)
+	char *buff_reg;
+	char *buff_str;
+
+	buff_reg = kzalloc(len, GFP_KERNEL);
+	buff_str = kzalloc(len, GFP_KERNEL);
+	exam_char.reg_value = 0;
+
+	if(copy_from_user(buff_reg, buf, len))
 	{
-		/* code */
-		exam_char.select_reg = kzalloc(len, GFP_KERNEL);
-		if (exam_char.select_reg == NULL)
-		{
-			printk("fail to allocate select_reg\n");
-			return -1;
-		}
-		printk("DEBUG\n");
-		if(copy_from_user(exam_char.select_reg, buf, len))
-		{
-			printk("fail to get data for select_reg\n");
-			return -EFAULT;
-		}
-		printk("%s\n", exam_char.select_reg);
+		return -EFAULT;
+	}
+	printk("lenght of buff is %d \n", len);
+	buff_reg[len] = '\0';
+	printk("buff_reg is %s1\n", buff_reg);
+	snprintf(buff_str, len, "%s", buff_reg);
+	if(strncmp(buff_str, "control", len) == 0)
+	{
+		printk("control reg is selected\n");
+		exam_char.hw_reg->control_reg = exam_char.reg_value;
+	}
+	else if(strncmp(buff_str, "status", len) == 0)
+	{
+		printk("status reg is selected\n");
+		exam_char.hw_reg->status_reg = exam_char.reg_value;
+	}
+	else if(strncmp(buff_str, "data", len) == 0)
+	{
+		printk("data reg is selected\n");
+		exam_char.hw_reg->data_reg = exam_char.reg_value;
 	}
 	else
 	{
-		unsigned char *input_reg;
-
-		input_reg = kzalloc(1, GFP_KERNEL);
-		if (exam_char.select_reg == NULL)
-		{
-			printk("fail to allocate input_reg\n");
-			return -1;
-		}
-		else
-		{
-			if(copy_from_user(input_reg, buf, 1))
-			{
-				printk("fail to get data for input_reg\n");
-				return -EFAULT;
-			}
-			else
-			{
-				if(strcmp(exam_char.select_reg, "data") == 0)
-				{
-					exam_char.hw_reg->data_reg = input_reg;
-				}
-				else if(strcmp(exam_char.select_reg, "control") == 0)
-				{
-					exam_char.hw_reg->control_reg = input_reg;
-				}
-				else if(strcmp(exam_char.select_reg, "status") == 0)
-				{
-					exam_char.hw_reg->status_reg = input_reg;
-				}
-			}
-			kfree(input_reg);
-		}
-		kfree(exam_char.select_reg);
+		
+		exam_char.reg_value = *buff_reg;
 	}
-
 	return len;
 }
 
