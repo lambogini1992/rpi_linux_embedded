@@ -7,7 +7,14 @@
 #include <linux/cdev.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/ioctl.h>
 #include "./gpio_reg.h"
+
+#define MAGIC_NO	262
+
+#define OUTPUT_LED	_IO(MAGIC_NO, 0)
+#define INPUT_LED	_IO(MAGIC_NO, 1)
+#define BLINK_LED   _IO(MAGIC_NO, 2)
 
 static volatile uint32_t *gpio_base = NULL;
 
@@ -32,6 +39,7 @@ static int dev_open(struct inode *, struct file *);
 static int dev_close(struct inode *, struct file *);
 static ssize_t dev_read(struct file*, char __user *, size_t, loff_t *);
 static ssize_t dev_write(struct file *, const char __user *, size_t, loff_t *);
+static long dev_ioctl(struct file *, unsigned int, unsigned long);
 
 static struct file_operations fops = {
 	.owner = THIS_MODULE,
@@ -39,6 +47,7 @@ static struct file_operations fops = {
 	.release = dev_close,
 	.read = dev_read,
 	.write = dev_write,
+	.unlocked_ioctl = dev_ioctl,
 };
 
 static void init_gpio_base(void)
@@ -116,6 +125,32 @@ static uint8_t read_level_gpio(uint16_t pin)
 		level_pin = level_pin >> pin;
 	}
 	return (uint8_t)level_pin;
+}
+
+static int blink_led_out(uint16_t pin)
+{
+	int i;
+	uint8_t level_pin;
+
+	for(i = 0; i < 20; i++)
+	{
+		level_pin = read_level_gpio(pin);
+
+		switch(level_pin)
+		{
+			case 0:
+				set_level_pin(pin, 1);
+				break;
+
+			case 1:
+				set_level_pin(pin, 0);
+				break;
+
+			default:
+				break;		
+		}	
+	}
+	return 0;
 }
 
 static int dev_open(struct inode *inodep, struct file *filep)
@@ -209,6 +244,29 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 	return len;
 }
 
+static long dev_ioctl(struct file *flip, unsigned int cmd, unsigned long arg)
+{
+	// int value;
+
+	switch(cmd)
+	{
+		case OUTPUT_LED:
+			set_func_pin(gpio_infor_dev.gpio_pin, 1);
+			break;
+
+		case INPUT_LED:
+			set_func_pin(gpio_infor_dev.gpio_pin, 0);
+			break;
+
+		case BLINK_LED:
+			blink_led_out(gpio_infor_dev.gpio_pin);	
+			break;
+
+		default:
+			break;	
+	}
+	return 0;
+}
 
 static int __init gpio_init(void)
 {
