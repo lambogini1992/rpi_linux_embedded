@@ -1058,7 +1058,8 @@
 	};
 
 	simple_misc_dev: simple-misc_dev{
-		.compatible = "test,simple-misc-dev";
+		compatible = "test,simple-misc-dev";
+		status = "okay";
 	};
 
 	__symbols__ {
