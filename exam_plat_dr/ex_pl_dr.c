@@ -1,7 +1,9 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/init.h>
 
 //for platform drivers....
+#include <linux/of.h>
 #include <linux/platform_device.h>
 
 #define DRIVER_NAME "Sample_Pldrv"
@@ -9,11 +11,14 @@
 MODULE_LICENSE("GPL");
 
 /***************/
-static const struct of_device_id misc_dev_table_id[]=
+static const struct of_device_id example_device_table[]=
 {
-	{ .compatible = "test,simple-misc-dev" },
-	{},
+	{ .compatible = "test,simple-misc-dev", },
+	{0},
 };
+
+MODULE_DEVICE_TABLE(of,example_device_table);
+
 /**************/ 
 static int sample_drv_probe(struct platform_device *pdev)
 {
@@ -32,12 +37,12 @@ static struct platform_driver sample_pldriver = {
     .driver = {
             .name  = DRIVER_NAME,
             .owner = THIS_MODULE,
-            .of_match_table = misc_dev_table_id,
+            .of_match_table = of_match_ptr(example_device_table),
     },
 };
 /**************/  
 
-int ourinitmodule(void)
+static int __init ourinitmodule(void)
 {
     printk(KERN_ALERT "\n Welcome to sample Platform driver.... \n");
 
@@ -47,7 +52,7 @@ int ourinitmodule(void)
     return 0;
 }
 
-void ourcleanupmodule(void)
+static void __exit ourcleanupmodule(void)
 {
     printk(KERN_ALERT "\n Thanks....Exiting sample Platform driver... \n");
 
