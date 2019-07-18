@@ -127,6 +127,13 @@
 			phandle = <0x16>;
 		};
 
+		test_gpio@7e200000 {
+			compatible = "test, test_gpio_bcm";
+			reg = <0x7e200000 0xb4>;
+			status = "okay";
+			phandle = <0xfe>;
+		};
+
 		gpio@7e200000 {
 			compatible = "brcm,bcm2835-gpio";
 			reg = <0x7e200000 0xb4>;
@@ -834,16 +841,6 @@
 			dma-names = "rx-tx";
 			status = "disabled";
 			phandle = <0x6c>;
-		};
-
-		example_gpio@7e200000 {
-			compatible = "test,test-rpi2b-gpio";
-			reg = <0x7e200000 0xb4>;
-			gpio-controller;
-			#gpio-cells = <0x2>;
-			interrupt-controller;
-			#interrupt-cells = <0x2>;
-			phandle = <0xe>;
 		};
 
 		axiperf {
