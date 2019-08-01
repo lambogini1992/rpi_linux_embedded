@@ -35,6 +35,7 @@
 		i2c1 = "/soc/i2c@7e804000";
 		i2c2 = "/soc/i2c@7e805000";
 		usb = "/soc/usb@7e980000";
+		test_gpio="/soc/test_gpio@7e200000";
 		leds = "/leds";
 		simple = "/simple_misc_dev";
 		fb = "/soc/fb";
@@ -127,13 +128,6 @@
 			phandle = <0x16>;
 		};
 
-		test_gpio@7e200000 {
-			compatible = "test, test_gpio_bcm";
-			reg = <0x7e200000 0xb4>;
-			status = "okay";
-			phandle = <0xfe>;
-		};
-
 		gpio@7e200000 {
 			compatible = "brcm,bcm2835-gpio";
 			reg = <0x7e200000 0xb4>;
@@ -145,9 +139,21 @@
 			phandle = <0xe>;
 
 			dpi_gpio0 {
-				brcm,pins = <0x0 0x1 0x2 0x3 0x4 0x5 0x6 0x7 0x8 0x9 0xa 0xb 0xc 0xd 0xe 0xf 0x10 0x11 0x12 0x13 0x14 0x15 0x16 0x17 0x18 0x19 0x1a 0x1b>;
+				brcm,pins = <0x0 0x1 0x2 0x3 0x4 0x5 0x6 0x7 0x8 0x9 0xa 0xb 0xc 0xd 0xe 0xf 0x10 0x11 0xf 0x13 0x14 0x15 0x16 0x17 0x18 0x19 0x1a 0x1b>;
 				brcm,function = <0x6>;
 				phandle = <0x2d>;
+			};
+
+			test_leds{
+				brcm,pins = <0x12>;
+				brcm,function = <0x1>;
+				phandle = <0x75>;
+			};
+
+			buttons_test{
+				brcm,pins = <0x11>;
+				brcm,function = <0x0>;
+				phandle = <0x76>;
 			};
 
 			emmc_gpio22 {
@@ -453,6 +459,15 @@
 				brcm,function = <0x4>;
 				phandle = <0x17>;
 			};
+		};
+
+		test_gpio@7e200000 {
+			compatible = "test_leds, test_leds_gpio_bcm";
+			reg = <0x7e200000 0xb4>;
+			pinctrl-names = "default";
+			pinctrl-0 = <0x75>;
+			status = "okay";
+			phandle = <0xfe>;
 		};
 
 		serial@7e201000 {
@@ -1169,6 +1184,7 @@
 		smi = "/soc/smi@7e600000";
 		axiperf = "/soc/axiperf";
 		firmware = "/soc/firmware";
+		test_gpio = "/soc/test_gpio@7e200000";
 		power = "/soc/power";
 		fb = "/soc/fb";
 		vcsm = "/soc/vcsm";

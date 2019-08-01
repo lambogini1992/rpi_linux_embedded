@@ -32,11 +32,31 @@ static long dev_ioctl(struct file *, unsigned int, unsigned long);
 static int device_probe(struct platform_device *pdev);
 static int device_remove(struct platform_device *pdev);
 
-static const struct of_device_id test_gpio_of_match[] = 
+static const struct of_device_id test_leds_of_match[] =
 {
-	{.compatible = "test, test_gpio_bcm", },
+	{.compatible = "test_leds, test_leds_gpio_bcm", },
 	{},
 };
 
 MODULE_DEVICE_TABLE(of, test_gpio_of_match);
 
+static struct platform_driver test_leds_pldriver = {
+	.probe 		= device_probe,
+	.remove		= device_remove,
+	.device 	= {
+		.name 						= DRIVER_NAME,
+		.owner						= THIS_MODULE,
+		.of_match_table		= of_match_ptr(test_leds_of_match),
+	},
+};
+
+static int device_probe(struct platform_device *pdev)
+{
+	printk("Hello! This is Leds GPIO\n");
+	
+}
+
+static int device_remove(struct platform_device *pdev)
+{
+	printk("Goodbye Leds GPIO\n");
+}
