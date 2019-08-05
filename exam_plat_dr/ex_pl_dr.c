@@ -1,7 +1,14 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
-
+/*for character device*/
+#include <linux/fs.h>
+#include <linux/io.h>
+#include <linux/device.h>
+#include <linux/cdev.h>
+#include <linux/slab.h>
+#include <linux/uaccess.h>
+#include <linux/ioctl.h>
 //for platform drivers....
 #include <linux/of.h>
 #include <linux/platform_device.h>
@@ -9,6 +16,29 @@
 #define DRIVER_NAME "Sample_Pldrv"
 
 MODULE_LICENSE("GPL");
+
+struct _exam_dev_
+{
+	dev_t dev_num;
+	struct cdev *cdev_dev;
+	struct class *dev_cls;
+	struct device *dev;
+}exam_dev;
+
+static int dev_open(struct inode *, struct file *);
+static int dev_close(struct inode *, struct file *);
+static ssize_t dev_read(struct file*, char __user *, size_t, loff_t *);
+static ssize_t dev_write(struct file *, const char __user *, size_t, loff_t *);
+static long dev_ioctl(struct file *, unsigned int, unsigned long);
+
+static struct file_operations fops = {
+	.owner = THIS_MODULE,
+	.open = dev_open,
+	.release = dev_close,
+	.read = dev_read,
+	.write = dev_write,
+	.unlocked_ioctl = dev_ioctl,
+};
 
 /***************/
 static const struct of_device_id example_device_table[]=
@@ -19,15 +49,92 @@ static const struct of_device_id example_device_table[]=
 
 MODULE_DEVICE_TABLE(of,example_device_table);
 
-/**************/ 
+/*********CHARACTER DEVICE*********/
+static int dev_open(struct inode *, struct file *)
+{
+	printk("Open example file\n");
+}
+
+static int dev_close(struct inode *, struct file *)
+{
+	printk("Close example file\n");
+}
+
+static ssize_t dev_read(struct file*, char __user *, size_t, loff_t *)
+{
+	printk("Read example file\n");
+}
+
+static ssize_t dev_write(struct file *, const char __user *, size_t, loff_t *)
+{
+	printk("Write example file\n");
+}
+/**************/
 static int sample_drv_probe(struct platform_device *pdev)
 {
+	int retval;
 	printk("\nInitialize Driver\n");
+
+	retval = alloc_chrdev_region(&exam_dev.dev_num, 0, 1, "exam_dev");
+	if(retval)
+	{
+		printk("Fail to allocate device driver\n");
+		return retval;
+	}
+	printk(KERN_INFO "Register successfully with major %i and minor %i\n", MAJOR(exam_dev.dev_num), MINOR(exam_dev.dev_num));
+
+	exam_dev.dev_cls = class_create(THIS_MODULE, "exam_class_dev");
+	if(NULL == exam_dev.dev_cls)
+	{
+		printk("FAIL TO CREATE CLASS DEVICE\n");
+		goto FAIL_TO_CREATE_CLASS;
+	}
+
+	exam_dev.dev = device_create(exam_dev.dev_cls, NULL, exam_dev.dev_num, NULL, "dev_exam");
+	if(NULL = example.dev)
+	{
+		printk("FAIL TO CREATE DEVICE FILE");
+		goto FAIL_TO_CREATE_DEVICE;
+	}
+
+	exam_dev.cdev_dev = cdev_alloc();
+	if(NULL == exam_dev.cdev_dev)
+	{
+		printk("FAIL to ALLOCATION CDEV\n");
+		goto FAIL_TO_ALLOC_CDEV;
+	}
+
+	cdev_init(exam_dev.cdev_dev, &fops);
+	retval = cdev_add(exam_dev.cdev_dev, exam_dev.dev_num, 1)
+	if(0 > retval)
+	{
+		printk("fail to add device file into device number\n");
+		goto FAIL_TO_INIT_CDEV:
+	}
+	printk("Create Device File is successfully\n");
 	return 0;
+FAIL_TO_INIT_CDEV:
+	cdev_del(exam_dev.cdev_dev)
+FAIL_TO_ALLOC_CDEV:
+	device_destroy(exam_dev.dev, exam_dev.dev_num);
+FAIL_TO_CREATE_DEVICE:
+	class_destroy(exam_dev.dev_cls);
+FAIL_TO_CREATE_CLASS:
+	unregister_chrdev_region(exam_dev.dev_num, 1);
+	return retval;
 }
 static int sample_drv_remove(struct platform_device *pdev)
 {
 	printk("\nRemove driver\n");
+
+	cdev_del(exam_dev.cdev_dev)
+
+	device_destroy(exam_dev.dev, exam_dev.dev_num);
+
+	class_destroy(exam_dev.dev_cls);
+
+	unregister_chrdev_region(exam_dev.dev_num, 1);
+	
 	return 0;
 }
 
@@ -40,7 +147,7 @@ static struct platform_driver sample_pldriver = {
             .of_match_table = of_match_ptr(example_device_table),
     },
 };
-/**************/  
+/**************/
 
 static int __init ourinitmodule(void)
 {
