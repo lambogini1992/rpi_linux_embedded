@@ -1059,6 +1059,7 @@
 
 	simple_misc_dev: simple-misc_dev{
 		compatible = "test,simple-misc-dev";
+		reg = <0x0 0x1>;
 		status = "okay";
 	};
 

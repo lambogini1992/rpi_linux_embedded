@@ -29,7 +29,6 @@ static int dev_open(struct inode *, struct file *);
 static int dev_close(struct inode *, struct file *);
 static ssize_t dev_read(struct file*, char __user *, size_t, loff_t *);
 static ssize_t dev_write(struct file *, const char __user *, size_t, loff_t *);
-static long dev_ioctl(struct file *, unsigned int, unsigned long);
 
 static struct file_operations fops = {
 	.owner = THIS_MODULE,
@@ -37,37 +36,40 @@ static struct file_operations fops = {
 	.release = dev_close,
 	.read = dev_read,
 	.write = dev_write,
-	.unlocked_ioctl = dev_ioctl,
 };
 
 /***************/
 static const struct of_device_id example_device_table[]=
 {
 	{ .compatible = "test,simple-misc-dev", },
-	{0},
+	{},
 };
 
 MODULE_DEVICE_TABLE(of,example_device_table);
 
 /*********CHARACTER DEVICE*********/
-static int dev_open(struct inode *, struct file *)
+static int dev_open(struct inode *inodep, struct file *filep)
 {
 	printk("Open example file\n");
+	return 0;
 }
 
-static int dev_close(struct inode *, struct file *)
+static int dev_close(struct inode *inodep, struct file *filep)
 {
 	printk("Close example file\n");
+	return 0;
 }
 
-static ssize_t dev_read(struct file*, char __user *, size_t, loff_t *)
+static ssize_t dev_read(struct file*filep, char __user *buf, size_t len, loff_t *offset)
 {
 	printk("Read example file\n");
+	return 0;
 }
 
-static ssize_t dev_write(struct file *, const char __user *, size_t, loff_t *)
+static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, loff_t *offset)
 {
 	printk("Write example file\n");
+	return 0;
 }
 /**************/
 static int sample_drv_probe(struct platform_device *pdev)
@@ -91,7 +93,7 @@ static int sample_drv_probe(struct platform_device *pdev)
 	}
 
 	exam_dev.dev = device_create(exam_dev.dev_cls, NULL, exam_dev.dev_num, NULL, "dev_exam");
-	if(NULL = example.dev)
+	if(NULL == exam_dev.dev)
 	{
 		printk("FAIL TO CREATE DEVICE FILE");
 		goto FAIL_TO_CREATE_DEVICE;
@@ -105,18 +107,19 @@ static int sample_drv_probe(struct platform_device *pdev)
 	}
 
 	cdev_init(exam_dev.cdev_dev, &fops);
-	retval = cdev_add(exam_dev.cdev_dev, exam_dev.dev_num, 1)
+	retval = cdev_add(exam_dev.cdev_dev, exam_dev.dev_num, 1);
 	if(0 > retval)
 	{
 		printk("fail to add device file into device number\n");
-		goto FAIL_TO_INIT_CDEV:
+		goto FAIL_TO_INIT_CDEV;
 	}
 	printk("Create Device File is successfully\n");
 	return 0;
+
 FAIL_TO_INIT_CDEV:
-	cdev_del(exam_dev.cdev_dev)
+	cdev_del(exam_dev.cdev_dev);
 FAIL_TO_ALLOC_CDEV:
-	device_destroy(exam_dev.dev, exam_dev.dev_num);
+	device_destroy(exam_dev.dev_cls, exam_dev.dev_num);
 FAIL_TO_CREATE_DEVICE:
 	class_destroy(exam_dev.dev_cls);
 FAIL_TO_CREATE_CLASS:
@@ -127,14 +130,14 @@ static int sample_drv_remove(struct platform_device *pdev)
 {
 	printk("\nRemove driver\n");
 
-	cdev_del(exam_dev.cdev_dev)
+	cdev_del(exam_dev.cdev_dev);
 
-	device_destroy(exam_dev.dev, exam_dev.dev_num);
+	device_destroy(exam_dev.dev_cls, exam_dev.dev_num);
 
 	class_destroy(exam_dev.dev_cls);
 
 	unregister_chrdev_region(exam_dev.dev_num, 1);
-	
+
 	return 0;
 }
 
