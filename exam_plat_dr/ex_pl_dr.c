@@ -11,6 +11,7 @@
 #include <linux/ioctl.h>
 //for platform drivers....
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/platform_device.h>
 
 #define DRIVER_NAME "Sample_Pldrv"
@@ -75,7 +76,24 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 static int sample_drv_probe(struct platform_device *pdev)
 {
 	int retval;
+	const struct of_device_id *match;
+	// int rc = 0;
+	struct resource *res;
+	unsigned long res_map_size;
+	void *registers;
 	printk("\nInitialize Driver\n");
+
+	match = of_match_device(example_device_table, &(pdev->dev));
+	if(!match)
+	{
+		printk("\nFail to matching table device with platform device\n");
+		return -EINVAL;
+	}
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	res_map_size = res->end - res->start + 1;
+
+	printk("Start reg_add of device is %x and size is %i\n", res->start, res_map_size);
 
 	retval = alloc_chrdev_region(&exam_dev.dev_num, 0, 1, "exam_dev");
 	if(retval)
