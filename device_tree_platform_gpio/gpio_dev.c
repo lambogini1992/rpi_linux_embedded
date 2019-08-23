@@ -1,12 +1,15 @@
-#include <linux/kernel.h>
+
 #include <linux/module.h>
+#include <linux/kernel.h>
 #include <linux/init.h>
-/*Using for register character device*/
-#include <linux/device.h>
+/*for character device*/
 #include <linux/fs.h>
+#include <linux/io.h>
+#include <linux/device.h>
 #include <linux/cdev.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/ioctl.h>
 #include <linux/delay.h>
 /*using for platform device*/
 #include <linux/io.h>
@@ -14,6 +17,8 @@
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
 
+
+#define DRIVER_NAME "GPIO_Pldrv"
 /*Declare Device REG*/
 /*Function Setting Register(Input/Output/function)
 *They are read and write register
@@ -161,6 +166,8 @@ MODULE_LICENSE("GPL");
 
 static volatile uint32_t *gpio_base = NULL;
 struct resource *res;
+uint8_t set_level;
+
 
 struct _exam_dev_
 {
@@ -173,7 +180,7 @@ struct _exam_dev_
 /*Function declared for gpio*/
 static void set_direction(uint8_t gpio_pin);
 static void set_pin_level(uint8_t gpio_pin, uint8_t level);
-static int read_pin_level(uint8_t gpio_pin);
+static int read_level_gpio(uint16_t pin);
 
 /*Register character device*/
 static int dev_open(struct inode *, struct file *);
@@ -204,25 +211,27 @@ static void set_direction(uint8_t gpio_pin)
 	{
 		case 0:
 			gpio_base[GPFSEL0] |= 1 << minor_pin;
-			break
+			break;
 
 		case 1:
 			gpio_base[GPFSEL1] |= 1 << minor_pin;
-			break	
+			break;
 
 		case 2:
 			gpio_base[GPFSEL2] |= 1 << minor_pin;
-			break	
+			break;
 
 		case 3:
 			gpio_base[GPFSEL0] |= 1 << minor_pin;
-			break	
+			break;
 	}
-	return 0;
 }
 
 static void set_pin_level(uint8_t gpio_pin, uint8_t level)
 {
+	uint8_t pin;
+
+	pin = gpio_pin;
 	switch(level)
 	{
 		case 0:
@@ -247,11 +256,10 @@ static void set_pin_level(uint8_t gpio_pin, uint8_t level)
 				pin = pin - 31;
 				gpio_base[GPSET1] |= 1 << pin;
 			}
-			break;		
+			break;
 
 		default:
 			printk("Wrong level for gpio pin\n");
-			return -1;
 			break;
 	}
 }
@@ -277,21 +285,66 @@ static int read_level_gpio(uint16_t pin)
 static int dev_open(struct inode *inode, struct file *fp)
 {
 	printk("Open Driver file\n");
+	set_direction(18);
+	printk("Kernel is set GPIO PIN 18 to become OUTPUT\n");
+	return 0;
 }
 
 static int dev_close(struct inode *inode, struct file *fp)
 {
 	printk("Close Driver Device File\n");
+	return 0;
 }
 
 static ssize_t dev_read(struct file *fp, char __user *ubuf, size_t size_of, loff_t *offset)
 {
-
+	return size_of;
 }
 
-static ssize_t dev_write(struct file *fp, const char __user *ubuf, size_t size_of, loff_t *offset);
+static ssize_t dev_write(struct file *fp, const char __user *buf, size_t size_of, loff_t *offset)
 {
+	char *kernel_buff = NULL;
+	char *buff_cmd = NULL;
 
+	kernel_buff = kzalloc(size_of, GFP_KERNEL);
+	buff_cmd 	= kzalloc(size_of, GFP_KERNEL);
+
+	if(NULL == kernel_buff)
+	{
+		printk("fail to allocate kernel_buff\n");
+		return 0;
+	}
+
+	if(NULL == buff_cmd)
+	{
+		printk("fail to allocate buff_cmd\n");
+		return 0;
+	}
+
+	if(copy_from_user(kernel_buff, buf, size_of))
+	{
+		printk("fail to get data from user buffer\n");
+		return -EFAULT;
+	}
+
+	snprintf(buff_cmd, size_of, "%s", kernel_buff);
+
+	if(strcmp(buff_cmd, "1") == 0)
+	{
+		set_pin_level(18, 1);
+	}
+	else if(strcmp(buff_cmd, "0") == 0)
+	{
+		set_pin_level(18, 0);
+	}
+	kfree(kernel_buff);
+	kfree(buff_cmd);
+	return size_of;
+}
+
+static long dev_ioctl(struct file *fops, unsigned int cmd, unsigned long len)
+{
+	return len;
 }
 /*Using for init device type*/
 /*Start create device platform driver*/
@@ -304,7 +357,7 @@ static const struct of_device_id test_leds_of_match[] =
 	{},
 };
 
-MODULE_DEVICE_TABLE(of, test_gpio_of_match);
+MODULE_DEVICE_TABLE(of, test_leds_of_match);
 
 
 
@@ -315,7 +368,7 @@ static int device_probe(struct platform_device *pdev)
 	int res_map_size;
 
 	printk(KERN_INFO "Hello! This is Leds GPIO\n");
-	
+
 	res = NULL;
 
 	match = of_match_device(test_leds_of_match, &(pdev->dev));
@@ -343,7 +396,7 @@ static int device_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	ret_val = alloc_chrdv_region(&exam_dev.dev_num, 0, 1, "exam_dev");
+	ret_val = alloc_chrdev_region(&exam_dev.dev_num, 0, 1, "exam_dev");
 	if(ret_val)
 	{
 		printk(KERN_ALERT "Fail to allocate character device\n");
@@ -373,7 +426,7 @@ static int device_probe(struct platform_device *pdev)
 		goto FAIL_ALLOCATE_CDEV;
 	}
 
-	cdev_init(exam_dev.cdev_dev, &fops)
+	cdev_init(exam_dev.cdev_dev, &fops);
 	ret_val = cdev_add(exam_dev.cdev_dev, exam_dev.dev_num, 1);
 	if(0 > ret_val)
 	{
@@ -392,30 +445,31 @@ FAIL_ALLOCATE_CDEV:
 	device_destroy(exam_dev.dev_cls, exam_dev.dev_num);
 
 FAIL_CREATE_DEV:
-	class_destroy(exam_dev.dev_cls, 1);
+	class_destroy(exam_dev.dev_cls);
 
 FAIL_CREATE_CLS:
-	unregister_chrdv_region(exam_dev.dev_num, 1);
+	unregister_chrdev_region(exam_dev.dev_num, 1);
 
 FAIL_ALLOCATE_CHRDEV:
 	iounmap(gpio_base);
-	
+
 	return ret_val;
 }
 
 static int device_remove(struct platform_device *pdev)
 {
 	printk("Goodbye Leds GPIO\n");
-	
-	cdev_dev(exam_dev.cdev_dev);
-	
+
+	cdev_del(exam_dev.cdev_dev);
+
 	device_destroy(exam_dev.dev_cls, exam_dev.dev_num);
 
-	class_destroy(exam_dev.dev_cls, 1);
+	class_destroy(exam_dev.dev_cls);
 
-	unregister_chrdv_region(exam_dev.dev_num, 1);
+	unregister_chrdev_region(exam_dev.dev_num, 1);
 
 	iounmap(gpio_base);
+	gpio_base = NULL;
 
 	return 0;
 }
@@ -423,7 +477,7 @@ static int device_remove(struct platform_device *pdev)
 static struct platform_driver test_leds_pldriver = {
 	.probe 		= device_probe,
 	.remove		= device_remove,
-	.device 	= {
+	.driver  	= {
 		.name 						= DRIVER_NAME,
 		.owner						= THIS_MODULE,
 		.of_match_table		= of_match_ptr(test_leds_of_match),
@@ -432,7 +486,7 @@ static struct platform_driver test_leds_pldriver = {
 
 /*Register device to system linux*/
 
-static int __init init_module(void)
+static int __init initmodule(void)
 {
 	printk(KERN_INFO ">>>>>>>>START DEVICE INIT<<<<<<<<<<\n");
 
@@ -441,13 +495,13 @@ static int __init init_module(void)
 	return 0;
 }
 
-static void __exit exit_module(void)
+static void __exit exitmodule(void)
 {
 	platform_driver_unregister(&test_leds_pldriver);
 
 	printk(KERN_INFO ">>>>>>>>>>>>EXIT DEVICE<<<<<<<<<<<\n");
-	return
+	return;
 }
 
-module_init(init_module);
-module_exit(exit_module);
+module_init(initmodule);
+module_exit(exitmodule);
