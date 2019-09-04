@@ -7,6 +7,8 @@
 #include <linux/uaccess.h>
 #include <linux/string.h>
 
+#define IRQ_NUMBER		11
+
 typedef struct _hw_dev
 {
 	unsigned char *data_reg;
@@ -50,7 +52,7 @@ static int buff_str_cmp(const char *buff, const char *str, int len_buf)
 	{
 		for( j = 0; j < len_str; j++)
 		{
-			
+
 			if(buff[i] == str[j])
 			{
 				printk("buff[i] %c and str[j] %c\n", buff[i], str[j]);
@@ -90,7 +92,7 @@ static int dev_close(struct inode *inodep, struct file *filep)
 static ssize_t dev_read(struct file*filep, char __user *buf, size_t len, loff_t *offset)
 {
 	printk("read\n");
-	
+
 	char *buff_reg;
 
 	buff_reg = kzalloc(len, GFP_KERNEL);
@@ -146,6 +148,13 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 	return len;
 }
 
+static irqreturn_t handle_exam_irq(int irq, void *dev_id)
+{
+
+
+	return IRQ_HANDLED;
+}
+
 static int __init exam_init(void)
 {
 	int ret;
@@ -157,13 +166,13 @@ static int __init exam_init(void)
 		return ret;
 	}
 	printk(KERN_INFO "register successfully major now is: %d\n", MAJOR(exam_char.t_dev));
-	
+
 	exam_char.dev_cls = class_create(THIS_MODULE, "example_class_dev");
 	if(exam_char.dev_cls == NULL)
 	{
 		printk("cannot register class for device\n");
 		goto fail_register_class;
-		
+
 	}
 
 	exam_char.dev = device_create(exam_char.dev_cls, NULL, exam_char.t_dev, NULL, "exam_dev");
@@ -198,9 +207,18 @@ static int __init exam_init(void)
 		printk("Successful to allocate memory\n");
 	}
 
+	ret = request_irq(IRQ_NUMBER, handle_exam_irq, IRQ_SHARED, "exam_irq", exam_char.hw_reg);
+	if(ret != 0)
+	{
+		printk("Fail to register irq\n");
+		goto fail_register_irq;
+	}
 	printk("successfully for create device driver\n");
 
 	return 0;
+
+fail_register_irq:
+	kfree(exam_char.hw_reg);
 
 fail_alloc_memory:
 	cdev_del(exam_char.t_cdev);
@@ -211,7 +229,7 @@ fail_alloc_cdev:
 fail_register_device:
 	class_destroy(exam_char.dev_cls);
 
-fail_register_class:	
+fail_register_class:
 	unregister_chrdev_region(exam_char.t_dev, 0);
 
 	return -1;
@@ -221,14 +239,16 @@ static void __exit exam_exit(void)
 {
 	printk("goodbye\n");
 
+	free_irq(IRQ_NUMBER, exam_char.hw_reg);
+
 	kfree(exam_char.hw_reg);
 
 	cdev_del(exam_char.t_cdev);
-	
+
 	device_destroy(exam_char.dev_cls, exam_char.t_dev);
-	
+
 	class_destroy(exam_char.dev_cls);
-	
+
 	unregister_chrdev_region(exam_char.t_dev, 0);
 }
 
