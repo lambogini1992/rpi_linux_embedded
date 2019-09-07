@@ -6,6 +6,7 @@
 #include <linux/device.h>
 #include <linux/uaccess.h>
 #include <linux/string.h>
+#include <linux/interrupt.h>
 
 typedef struct _hw_dev
 {
@@ -21,6 +22,7 @@ struct _exam_char
 	struct class *dev_cls;
 	struct device *dev;
 	HW_DEV *hw_reg;
+	int dev_ctrl;
 	char reg_value;
 }exam_char;
 
@@ -101,7 +103,7 @@ static ssize_t dev_read(struct file*filep, char __user *buf, size_t len, loff_t 
 	{
 		return -EFAULT;
 	}
-	printk("successfully to copy data %d\n", (int *)exam_char.hw_reg->data_reg);
+	printk("successfully to copy data %d\n", (int *)(exam_char.hw_reg->data_reg));
 
 	return 0;
 }
@@ -121,7 +123,7 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 	{
 		return -EFAULT;
 	}
-	printk("lenght of buff is %d \n", len);
+	printk("lenght of buff is %d \n", (int)len);
 	buff_reg[len] = '\0';
 	snprintf(buff_str, len, "%s", buff_reg);
 	if(strcmp(buff_str, "control") == 0)
@@ -144,6 +146,13 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 		exam_char.reg_value = buff_reg[0];
 	}
 	return len;
+}
+
+irqreturn_t interrupt_func(int irq, void *dev_id)
+{
+	exam_char.dev_ctrl++;
+
+	return IRQ_HANDLED;
 }
 
 static int __init exam_init(void)

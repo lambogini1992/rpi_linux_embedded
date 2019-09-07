@@ -8,7 +8,10 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/ioctl.h>
+#include <linux/interrupt.h>
 #include "./gpio_reg.h"
+
+#define NO_GPIO		4
 
 #define MAGIC_NO	262
 
@@ -26,14 +29,21 @@ struct _gpio_dev_
 	struct device *dev;
 }gpio_dev;
 
-struct _gpio_infor_dev
+typedef struct _gpio_infor_dev
 {
 	uint16_t gpio_pin;
 	uint16_t gpio_sel;
 	uint16_t set_level;
 	uint16_t input_count;
-}gpio_infor_dev;
+	bool set_val;
+	int irq_no;
+	uint32_t irq_request;
+}GPIO_INFOR_DEV;
 
+GPIO_INFOR_DEV gpio_infor_dev;
+GPIO_INFOR_DEV led_gpio;
+
+uint8_t gpio_pin_val[NO_GPIO] = {17, 18, 22, 24};
 
 static int dev_open(struct inode *, struct file *);
 static int dev_close(struct inode *, struct file *);
@@ -153,6 +163,50 @@ static int blink_led_out(uint16_t pin)
 	return 0;
 }
 
+/*If event is actived. It return true*/
+static bool check_change_event(uint8_t gpio_pin)
+{
+	bool event_ret;
+	uint32_t get_event;
+
+	if(gpio_pin <= 31)
+	{
+		get_event = gpio_base[GPEDS0] & (1 << gpio_pin);
+		get_event = get_event >> gpio_pin;
+
+		switch(get_event)
+		{
+			case 1:
+				event_ret == true;
+				gpio_base[GPEDS0] = (0x00000001 << gpio_pin);
+				break;
+
+			case 0:
+				event_ret == false;
+				break;
+		}
+	}
+	else
+	{
+		gpio_pin = gpio_pin - 31;
+		get_event = gpio_base[GPEDS1] & (1 << gpio_pin);
+		get_event = get_event >> gpio_pin;
+		switch(get_event)
+		{
+			case 1:
+				event_ret == true;
+				gpio_base[GPEDS1] = (0x00000001 << gpio_pin);
+				break;
+
+			case 0:
+				event_ret == false;
+				break;
+		}
+	}
+
+	return event_ret;
+}
+
 static int dev_open(struct inode *inodep, struct file *filep)
 {
 	init_gpio_base();
@@ -268,6 +322,22 @@ static long dev_ioctl(struct file *flip, unsigned int cmd, unsigned long arg)
 	return 0;
 }
 
+irqreturn_t ex_gpio_irq(int irq, void *dev_id)
+{
+	GPIO_INFOR_DEV *irq_gpio;
+
+	irq_gpio = dev_id;
+
+	if(false == check_change_event(irq_gpio->pin))
+	{
+		return IRQ_NONE;
+	} 
+
+	irq_gpio->set_val = ~(irq_gpio->set_val);
+
+	return IRQ_HANDLED;
+}
+
 static int __init gpio_init(void)
 {
 	int ret_val;
@@ -306,12 +376,14 @@ static int __init gpio_init(void)
 	if(0 > ret_val)
 	{
 		printk("fail to add device file into device number\n");
-		goto fail_alloc_cdev;
+		goto fail_register_cdev_file;
 	}
 	printk("successfully create gpio device driver\n");
 
 	return 0;
 
+fail_register_cdev_file:
+	cdev_del(gpio_dev.cdev_dev);
 fail_alloc_cdev:
 	device_destroy(gpio_dev.dev_cls, gpio_dev.dev_num);
 fail_register_device:
