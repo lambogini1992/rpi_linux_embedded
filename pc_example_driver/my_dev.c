@@ -7,6 +7,8 @@
 #include <linux/uaccess.h>
 #include <linux/string.h>
 
+#define NO_DEV	3
+
 typedef struct _hw_dev
 {
 	unsigned char *data_reg;
@@ -17,9 +19,9 @@ typedef struct _hw_dev
 struct _exam_char
 {
 	dev_t t_dev;
-	struct cdev *t_cdev;
+	struct cdev *t_cdev[NO_DEV];
 	struct class *dev_cls;
-	struct device *dev;
+	struct device *dev[NO_DEV];
 	HW_DEV *hw_reg;
 	char reg_value;
 }exam_char;
@@ -149,8 +151,8 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 static int __init exam_init(void)
 {
 	int ret;
-
-	ret = alloc_chrdev_region(&exam_char.t_dev, 0, 1, "example_char_dev");
+	int dev_idx;
+	ret = alloc_chrdev_region(&exam_char.t_dev, 0, NO_DEV, "example_char_dev");
 	if(ret)
 	{
 		printk("can not register major no\n");
@@ -166,47 +168,59 @@ static int __init exam_init(void)
 		
 	}
 
-	exam_char.dev = device_create(exam_char.dev_cls, NULL, exam_char.t_dev, NULL, "exam_dev");
-	if(exam_char.dev == NULL)
+	for(dev_idx = 0; dev_idx < NO_DEV; dev_idx++)
 	{
-		printk("cannot register device file for device\n");
-		goto fail_register_device;
-	}
+		exam_char.dev[dev_idx] = device_create(exam_char.dev_cls, NULL, MKDEV(MAJOR(exam_char.t_dev), \
+			MINOR(exam_char.t_dev) + dev_idx), NULL, "exam_dev_%d", dev_idx);
+		if(exam_char.dev[dev_idx] == NULL)
+		{
+			printk("cannot register device file for device\n");
 
-	exam_char.t_cdev = cdev_alloc();
-	if(exam_char.t_cdev == NULL)
-	{
-		printk("cannot allocate entry point\n");
-		goto fail_alloc_cdev;
-	}
-	cdev_init(exam_char.t_cdev, &fops);
-	ret = cdev_add(exam_char.t_cdev, exam_char.t_dev, 1);
-	if(ret < 0)
-	{
-		printk("fail to add device file into device number\n");
-		goto fail_alloc_cdev;
+			if(dev_idx > 0)
+			{
+fail_alloc_cdev:	
+				while(0 <= dev_idx)
+				{
+					device_destroy(exam_char.dev_cls, MKDEV(MAJOR(exam_char.t_dev), \
+						MINOR(exam_char.t_dev) + dev_idx));
+					dev_idx--;
+				}
+			}
+			goto fail_register_device;
+		}
+
+		exam_char.t_cdev[dev_idx] = cdev_alloc();
+		if(exam_char.t_cdev[dev_idx] == NULL)
+		{
+			printk("cannot allocate entry point\n");
+			goto fail_alloc_cdev;
+		}
+		cdev_init(exam_char.t_cdev[dev_idx], &fops);
+		ret = cdev_add(exam_char.t_cdev[dev_idx], MKDEV(MAJOR(exam_char.t_dev), \
+			MINOR(exam_char.t_dev) + dev_idx), 1);
+		if(ret < 0)
+		{
+			printk("fail to add device file into device number\n");
+			goto fail_alloc_cdev;
+		}
 	}
 
 	exam_char.hw_reg = kzalloc(sizeof(HW_DEV), GFP_KERNEL);
 	if(exam_char.hw_reg == NULL)
 	{
 		printk("Fail to allocate memory\n");
-		goto fail_alloc_memory;
+		cdev_del(exam_char.t_cdev[dev_idx]);
+		goto fail_alloc_cdev;
 	}
 	else
 	{
 		printk("Successful to allocate memory\n");
 	}
-
 	printk("successfully for create device driver\n");
 
 	return 0;
 
-fail_alloc_memory:
-	cdev_del(exam_char.t_cdev);
 
-fail_alloc_cdev:
-	device_destroy(exam_char.dev_cls, exam_char.t_dev);
 
 fail_register_device:
 	class_destroy(exam_char.dev_cls);
@@ -219,13 +233,18 @@ fail_register_class:
 
 static void __exit exam_exit(void)
 {
+	int dev_idx;
 	printk("goodbye\n");
 
 	kfree(exam_char.hw_reg);
-
-	cdev_del(exam_char.t_cdev);
+	for(dev_idx = 0; dev_idx < NO_DEV; dev_idx++)
+	{
+		cdev_del(exam_char.t_cdev[dev_idx]);
 	
-	device_destroy(exam_char.dev_cls, exam_char.t_dev);
+		device_destroy(exam_char.dev_cls, MKDEV(MAJOR(exam_char.t_dev), \
+			MINOR(exam_char.t_dev) + dev_idx));
+	}
+
 	
 	class_destroy(exam_char.dev_cls);
 	
