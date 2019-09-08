@@ -24,9 +24,9 @@ static volatile uint32_t *gpio_base = NULL;
 struct _gpio_dev_
 {
 	dev_t dev_num;
-	struct cdev *cdev_dev;
+	struct cdev cdev_dev[NO_GPIO];
 	struct class *dev_cls;
-	struct device *dev;
+	struct device dev[NO_GPIO];
 }gpio_dev;
 
 typedef struct _gpio_infor_dev
@@ -341,8 +341,9 @@ irqreturn_t ex_gpio_irq(int irq, void *dev_id)
 static int __init gpio_init(void)
 {
 	int ret_val;
+	uint8_t idx_dev;
 
-	ret_val = alloc_chrdev_region(&gpio_dev.dev_num, 0, 1, "gpio_dev");
+	ret_val = alloc_chrdev_region(&gpio_dev.dev_num, 0, NO_GPIO, "gpio_dev");
 	if(ret_val)
 	{
 		printk("can not register major no\n");
@@ -354,30 +355,34 @@ static int __init gpio_init(void)
 	gpio_dev.dev_cls = class_create(THIS_MODULE, "gpio_class_dev");
 	if(NULL == gpio_dev.dev_cls)
 	{
-		printk("cannot register class device file for device\n");
+		printk(KERN_WARNING "cannot register class device file for device\n");
 		goto fail_register_class;
 	}
 
-	gpio_dev.dev = device_create(gpio_dev.dev_cls, NULL, gpio_dev.dev_num, NULL, "dev_gpio");
-	if(NULL == gpio_dev.dev)
+	for(idx_dev = 0; idx_dev < NO_GPIO; idx_dev++)
 	{
-		printk("cannot register device file for device\n");
-		goto fail_register_device;
+		gpio_dev.dev[idx_dev] = device_create(gpio_dev.dev_cls, NULL, MKDEV(MAJOR(gpio_dev.dev_num), MINOR(gpio_dev.dev_num) + idx_dev), NULL, "dev_gpio%d", idx_dev);
+		if(NULL == gpio_dev.dev[idx_dev])
+		{
+			printk(KERN_WARNING "cannot register device file for device\n");
+			goto fail_register_device;
+		}
+
+		gpio_dev.cdev_dev = cdev_alloc();
+		if(NULL == gpio_dev.cdev_dev)
+		{
+			printk(KERN_WARNING "Fail to allocate memory for cdev\n");
+			goto fail_alloc_cdev;
+		}
+		cdev_init(gpio_dev.cdev_dev, &fops);
+		ret_val = cdev_add(gpio_dev.cdev_dev, gpio_dev.dev_num, 1);
+		if(0 > ret_val)
+		{
+			printk(KERN_WARNING "fail to add device file into device number\n");
+			goto fail_register_cdev_file;
+		}
 	}
 
-	gpio_dev.cdev_dev = cdev_alloc();
-	if(NULL == gpio_dev.cdev_dev)
-	{
-		printk("Fail to allocate memory for cdev\n");
-		goto fail_alloc_cdev;
-	}
-	cdev_init(gpio_dev.cdev_dev, &fops);
-	ret_val = cdev_add(gpio_dev.cdev_dev, gpio_dev.dev_num, 1);
-	if(0 > ret_val)
-	{
-		printk("fail to add device file into device number\n");
-		goto fail_register_cdev_file;
-	}
 	printk("successfully create gpio device driver\n");
 
 	return 0;
@@ -389,7 +394,7 @@ fail_alloc_cdev:
 fail_register_device:
 	class_destroy(gpio_dev.dev_cls);
 fail_register_class:
-	unregister_chrdev_region(gpio_dev.dev_num, 3);	
+	unregister_chrdev_region(gpio_dev.dev_num, NO_GPIO);	
 	return ret_val;
 }
 
