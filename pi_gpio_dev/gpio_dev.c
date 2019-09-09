@@ -51,6 +51,7 @@ static int dev_close(struct inode *, struct file *);
 static ssize_t dev_read(struct file*, char __user *, size_t, loff_t *);
 static ssize_t dev_write(struct file *, const char __user *, size_t, loff_t *);
 static long dev_ioctl(struct file *, unsigned int, unsigned long);
+irqreturn_t ex_gpio_irq(int irq, void *dev_id);
 
 static struct file_operations fops = {
 	.owner = THIS_MODULE,
@@ -73,19 +74,83 @@ static void release_gpio(void)
 	gpio_base = NULL;
 }
 
-static void set_func_pin(uint16_t pin, uint8_t func)
+static void set_input_func_pin(uint16_t gpio_pin)
 {
-	uint16_t index_selreg;
-	uint16_t shift;
+	int major_pin;
+	int minor_pin;
 
-	index_selreg = GPFSEL0 + pin/10;
-	shift = (pin % 10) * 3;
+	major_pin = gpio_pin/10;
+	minor_pin = gpio_pin - (major_pin*10);
 
-	gpio_base[index_selreg] = gpio_base[index_selreg] | ((func * 0x07) << shift);
+	switch(major_pin)
+	{
+		case 0:
+			gpio_base[GPFSEL0] |= 0 << minor_pin;
+			break;
+
+		case 1:
+			gpio_base[GPFSEL1] |= 0 << minor_pin;
+			break;
+
+		case 2:
+			gpio_base[GPFSEL2] |= 0 << minor_pin;
+			break;
+
+		case 3:
+			gpio_base[GPFSEL3] |= 0 << minor_pin;
+			break;
+
+		case 4:
+			gpio_base[GPFSEL4] |= 0 << minor_pin;
+			break;
+
+		case 5:
+			gpio_base[GPFSEL5] |= 0 << minor_pin;
+			break;
+	}
 }
 
-static int set_level_pin(uint16_t pin, uint8_t level)
+static void set_output_func_pin(uint16_t gpio_pin)
 {
+	int major_pin;
+	int minor_pin;
+
+	major_pin = gpio_pin/10;
+	minor_pin = gpio_pin - (major_pin*10);
+
+	switch(major_pin)
+	{
+		case 0:
+			gpio_base[GPFSEL0] |= 1 << minor_pin;
+			break;
+
+		case 1:
+			gpio_base[GPFSEL1] |= 1 << minor_pin;
+			break;
+
+		case 2:
+			gpio_base[GPFSEL2] |= 1 << minor_pin;
+			break;
+
+		case 3:
+			gpio_base[GPFSEL3] |= 1 << minor_pin;
+			break;
+
+		case 4:
+			gpio_base[GPFSEL4] |= 1 << minor_pin;
+			break;
+
+		case 5:
+			gpio_base[GPFSEL5] |= 1 << minor_pin;
+			break;
+	}
+}
+
+static int set_level_pin(uint16_t gpio_pin, uint8_t level)
+{
+	uint8_t pin;
+
+	pin = gpio_pin;
 	switch(level)
 	{
 		case 0:
@@ -114,10 +179,8 @@ static int set_level_pin(uint16_t pin, uint8_t level)
 
 		default:
 			printk("Wrong level for gpio pin\n");
-			return -1;
 			break;
 	}
-	return 0;
 }
 
 static uint8_t read_level_gpio(uint16_t pin)
@@ -150,11 +213,11 @@ static int blink_led_out(uint16_t pin)
 		switch(level_pin)
 		{
 			case 0:
-				set_level_pin(pin, 1);
+				(void)set_level_pin(pin, 1);
 				break;
 
 			case 1:
-				set_level_pin(pin, 0);
+				(void)set_level_pin(pin, 0);
 				break;
 
 			default:
@@ -180,12 +243,12 @@ static bool check_change_event(uint8_t gpio_pin)
 		switch(get_event)
 		{
 			case 1:
-				event_ret == true;
+				event_ret = true;
 				gpio_base[GPEDS0] = (0x00000001 << gpio_pin);
 				break;
 
 			case 0:
-				event_ret == false;
+				event_ret = false;
 				break;
 		}
 	}
@@ -197,12 +260,12 @@ static bool check_change_event(uint8_t gpio_pin)
 		switch(get_event)
 		{
 			case 1:
-				event_ret == true;
+				event_ret = true;
 				gpio_base[GPEDS1] = (0x00000001 << gpio_pin);
 				break;
 
 			case 0:
-				event_ret == false;
+				event_ret = false;
 				break;
 		}
 	}
@@ -212,20 +275,17 @@ static bool check_change_event(uint8_t gpio_pin)
 
 static int dev_open(struct inode *inodep, struct file *filep)
 {
-	init_gpio_base();
-
-	gpio_infor_dev.gpio_pin = 21;
-	printk("open gpio pin %d", gpio_infor_dev.gpio_pin);
+	unsigned int node_pin;
+	node_pin = iminor(inodep);
+	printk(KERN_INFO "Open device file of GPIO %d pin", gpio_pin_val[node_pin]);
 	return 0;
 }
 
 static int dev_close(struct inode *inodep, struct file *filep)
 {
-	printk("close gpio pin %d", gpio_infor_dev.gpio_pin);
-	gpio_infor_dev.gpio_pin = 0;
-
-	release_gpio();
-
+	unsigned int node_pin;
+	node_pin = iminor(inodep);
+	printk(KERN_INFO "Close device file of GPIO %d pin", gpio_pin_val[node_pin]);
 	return 0;
 }
 
@@ -233,10 +293,12 @@ static ssize_t dev_read(struct file*filep, char __user *buf, size_t len, loff_t 
 {
 	size_t buff_len;
 	char *kernel_buff;
+	unsigned int node_dev;
 
+	node_dev		= iminor(filep->f_path.dentry->d_inode);
 	kernel_buff = kzalloc(sizeof(uint8_t), GFP_KERNEL);
 
-	buff_len = snprintf(kernel_buff, sizeof(uint8_t), "%d", read_level_gpio(gpio_infor_dev.gpio_pin));
+	buff_len = snprintf(kernel_buff, sizeof(uint8_t), "%d", read_level_gpio(gpio_ctrl_pin[node_dev].gpio_pin));
 
 	if(copy_to_user(buf, kernel_buff, buff_len))
 	{
@@ -251,7 +313,11 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 {
 	char *kernel_buff;
 	char *buff_cmd;
+	unsigned int node_dev;
+	char *name_irq;
 
+
+	node_dev		= iminor(filep->f_path.dentry->d_inode);
 	kernel_buff = kzalloc(len, GFP_KERNEL);
 	buff_cmd 	= kzalloc(len, GFP_KERNEL);
 
@@ -271,31 +337,57 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 
 	if(strcmp(buff_cmd, "in") == 0)
 	{
-		printk("in\n");
-		gpio_infor_dev.gpio_sel = 0;
-		set_func_pin(gpio_infor_dev.gpio_pin, gpio_infor_dev.gpio_sel);
+		printk(KERN_INFO "set pin %d to become input\n", gpio_pin_val[node_dev]);
+		gpio_ctrl_pin[node_dev].gpio_sel = 0;
+		set_input_func_pin(gpio_ctrl_pin[node_dev].gpio_pin);
+		if(gpio_ctrl_pin[node_dev].irq_no != 0)
+		{
+			gpio_ctrl_pin[node_dev].irq_no		= gpio_to_irq(gpio_ctrl_pin[node_dev].gpio_pin);
+			name_irq = kzalloc(20, GFP_KERNEL);
+			sprintf(name_irq, "%s%d","ex_gpio_irq", gpio_ctrl_pin[node_dev].gpio_pin);
+			request_irq(gpio_ctrl_pin[node_dev].irq_no, ex_gpio_irq, IRQF_SHARED | IRQF_TRIGGER_RISING, name_irq, (void *)(&gpio_ctrl_pin[node_dev]));
+			kfree(name_irq);
+		}
 	}
 	else if(strcmp(buff_cmd, "out") == 0)
 	{
-		printk("out\n");
-		gpio_infor_dev.gpio_sel = 1;
-		set_func_pin(gpio_infor_dev.gpio_pin, gpio_infor_dev.gpio_sel);
+		printk(KERN_INFO "set pin %d to become output\n", gpio_pin_val[node_dev]);
+		if(gpio_ctrl_pin[node_dev].irq_no != 0)
+		{
+			free_irq(gpio_ctrl_pin[node_dev].irq_no, (void *)(&gpio_ctrl_pin[node_dev]));
+		}
+		gpio_ctrl_pin[node_dev].gpio_sel = 1;
+		set_output_func_pin(gpio_ctrl_pin[node_dev].gpio_pin);
 	}
 	else if(strcmp(buff_cmd, "high") == 0)
 	{
-		printk("high\n");
-		gpio_infor_dev.set_level = 1;
-		set_level_pin(gpio_infor_dev.gpio_pin, gpio_infor_dev.set_level);
+		if(1 == gpio_ctrl_pin[node_dev].gpio_sel)
+		{
+			printk(KERN_INFO "set pin %d to high\n", gpio_pin_val[node_dev]);
+			gpio_ctrl_pin[node_dev].set_level = 1;
+			(void)set_level_pin(gpio_ctrl_pin[node_dev].gpio_pin, gpio_ctrl_pin[node_dev].set_level);
+		}
+		else
+		{
+			printk(KERN_WARNING "This pin is not output function\n");
+		}
 	}
 	else if(strcmp(buff_cmd, "low") == 0)
 	{
-		printk("low\n");
-		gpio_infor_dev.set_level = 0;
-		set_level_pin(gpio_infor_dev.gpio_pin, gpio_infor_dev.set_level);
+		if(1 == gpio_ctrl_pin[node_dev].gpio_sel)
+		{
+			printk(KERN_INFO "set pin %d to high\n", gpio_pin_val[node_dev]);
+			gpio_ctrl_pin[node_dev].set_level = 0;
+			(void)set_level_pin(gpio_ctrl_pin[node_dev].gpio_pin, gpio_ctrl_pin[node_dev].set_level);
+		}
+		else
+		{
+			printk(KERN_WARNING "This pin is not output function\n");
+		}
 	}
 	else
 	{
-		printk("wrong syntax for gpio function\n");
+		printk(KERN_WARNING "wrong syntax for gpio function\n");
 	}
 	kfree(kernel_buff);
 	return len;
@@ -308,11 +400,11 @@ static long dev_ioctl(struct file *flip, unsigned int cmd, unsigned long arg)
 	switch(cmd)
 	{
 		case OUTPUT_LED:
-			set_func_pin(gpio_infor_dev.gpio_pin, 1);
+			set_output_func_pin(gpio_infor_dev.gpio_pin);
 			break;
 
 		case INPUT_LED:
-			set_func_pin(gpio_infor_dev.gpio_pin, 0);
+			set_input_func_pin(gpio_infor_dev.gpio_pin);
 			break;
 
 		case BLINK_LED:
@@ -324,6 +416,7 @@ static long dev_ioctl(struct file *flip, unsigned int cmd, unsigned long arg)
 	}
 	return 0;
 }
+
 
 irqreturn_t ex_gpio_irq(int irq, void *dev_id)
 {
@@ -340,6 +433,7 @@ irqreturn_t ex_gpio_irq(int irq, void *dev_id)
 		return IRQ_NONE;
 	}
 
+	printk(KERN_INFO "Get Interrupt from %d gpio pin", irq_gpio->gpio_pin);
 	irq_gpio->set_val = ~(irq_gpio->set_val);
 
 	return IRQ_HANDLED;
@@ -350,7 +444,6 @@ static int __init gpio_init(void)
 	int ret_val;
 	int idx_dev;
 	int idx_count;
-	char *name_irq;
 
 	ret_val = alloc_chrdev_region(&gpio_dev.dev_num, 0, NO_GPIO, "gpio_dev");
 	if(ret_val)
@@ -395,7 +488,8 @@ fail_alloc_cdev:
 			printk(KERN_WARNING "Fail to allocate memory for cdev\n");
 fail_register_cdev_file:
 			idx_count = idx_dev - 1;
-			while (idx_count >= 0) {
+			while (idx_count >= 0)
+			{
 				/* code */
 				cdev_del(gpio_dev.cdev_dev[idx_count]);
 				idx_count--;
@@ -412,15 +506,10 @@ fail_register_cdev_file:
 			cdev_del(gpio_dev.cdev_dev[idx_dev]);
 			goto fail_register_cdev_file;
 		}
-		memset(&gpio_ctrl_pin[idx_dev], 0, sizeof(GPIO_INFOR_DEV));
+		memset(&gpio_ctrl_pin[idx_dev], 1, sizeof(GPIO_INFOR_DEV));
 		gpio_ctrl_pin[idx_dev].gpio_pin = gpio_pin_val[idx_dev];
-		gpio_ctrl_pin[idx_dev].irq_no		= gpio_to_irq(gpio_ctrl_pin[idx_dev].gpio_pin);
-		name_irq = kzalloc(20, GFP_KERNEL);
-		sprintf(name_irq, "%s%d","ex_gpio_irq", idx_dev);
-		ret_val = request_irq(gpio_ctrl_pin[idx_dev].irq_no, ex_gpio_irq, IRQF_SHARED, name_irq, (void *)(&gpio_ctrl_pin[idx_dev]) );
-		kfree(name_irq);
 	}
-
+	init_gpio_base();
 	printk("successfully create gpio device driver\n");
 
 	return 0;
@@ -440,10 +529,15 @@ static void __exit gpio_exit(void)
 {
 	int idx_dev;
 	printk("Release gpio device driver\n");
-
+	release_gpio();
 	for (idx_dev = 0; idx_dev < NO_GPIO; idx_dev++)
 	{
 		/* code */
+		if(gpio_ctrl_pin[idx_dev].irq_no != 0)
+		{
+			free_irq(gpio_ctrl_pin[idx_dev].irq_no, (void *)(&gpio_ctrl_pin[idx_dev]));
+		}
+
 		cdev_del(gpio_dev.cdev_dev[idx_dev]);
 
 		device_destroy(gpio_dev.dev_cls, MKDEV(MAJOR(gpio_dev.dev_num), \
