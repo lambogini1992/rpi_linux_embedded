@@ -9,6 +9,7 @@
 #include <linux/uaccess.h>
 #include <linux/ioctl.h>
 #include <linux/interrupt.h>
+#include <linux/gpio.h>
 #include "./gpio_reg.h"
 
 #define NO_GPIO		4
@@ -24,9 +25,9 @@ static volatile uint32_t *gpio_base = NULL;
 struct _gpio_dev_
 {
 	dev_t dev_num;
-	struct cdev cdev_dev[NO_GPIO];
+	struct cdev *cdev_dev[NO_GPIO];
 	struct class *dev_cls;
-	struct device dev[NO_GPIO];
+	struct device *dev[NO_GPIO];
 }gpio_dev;
 
 typedef struct _gpio_infor_dev
@@ -41,7 +42,7 @@ typedef struct _gpio_infor_dev
 }GPIO_INFOR_DEV;
 
 GPIO_INFOR_DEV gpio_infor_dev;
-GPIO_INFOR_DEV led_gpio;
+GPIO_INFOR_DEV gpio_ctrl_pin[NO_GPIO];
 
 uint8_t gpio_pin_val[NO_GPIO] = {17, 18, 22, 24};
 
@@ -109,7 +110,7 @@ static int set_level_pin(uint16_t pin, uint8_t level)
 				pin = pin - 31;
 				gpio_base[GPSET1] |= 1 << pin;
 			}
-			break;		
+			break;
 
 		default:
 			printk("Wrong level for gpio pin\n");
@@ -157,8 +158,8 @@ static int blink_led_out(uint16_t pin)
 				break;
 
 			default:
-				break;		
-		}	
+				break;
+		}
 	}
 	return 0;
 }
@@ -168,6 +169,8 @@ static bool check_change_event(uint8_t gpio_pin)
 {
 	bool event_ret;
 	uint32_t get_event;
+
+	event_ret = false;
 
 	if(gpio_pin <= 31)
 	{
@@ -230,7 +233,7 @@ static ssize_t dev_read(struct file*filep, char __user *buf, size_t len, loff_t 
 {
 	size_t buff_len;
 	char *kernel_buff;
-	
+
 	kernel_buff = kzalloc(sizeof(uint8_t), GFP_KERNEL);
 
 	buff_len = snprintf(kernel_buff, sizeof(uint8_t), "%d", read_level_gpio(gpio_infor_dev.gpio_pin));
@@ -270,25 +273,25 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 	{
 		printk("in\n");
 		gpio_infor_dev.gpio_sel = 0;
-		set_func_pin(gpio_infor_dev.gpio_pin, 0x00);
+		set_func_pin(gpio_infor_dev.gpio_pin, gpio_infor_dev.gpio_sel);
 	}
 	else if(strcmp(buff_cmd, "out") == 0)
 	{
 		printk("out\n");
 		gpio_infor_dev.gpio_sel = 1;
-		set_func_pin(gpio_infor_dev.gpio_pin, 0x01);
+		set_func_pin(gpio_infor_dev.gpio_pin, gpio_infor_dev.gpio_sel);
 	}
 	else if(strcmp(buff_cmd, "high") == 0)
 	{
 		printk("high\n");
 		gpio_infor_dev.set_level = 1;
-		set_level_pin(gpio_infor_dev.gpio_pin, 0x01);
+		set_level_pin(gpio_infor_dev.gpio_pin, gpio_infor_dev.set_level);
 	}
 	else if(strcmp(buff_cmd, "low") == 0)
 	{
 		printk("low\n");
-		gpio_infor_dev.set_level = 1;
-		set_level_pin(gpio_infor_dev.gpio_pin, 0x00);
+		gpio_infor_dev.set_level = 0;
+		set_level_pin(gpio_infor_dev.gpio_pin, gpio_infor_dev.set_level);
 	}
 	else
 	{
@@ -313,11 +316,11 @@ static long dev_ioctl(struct file *flip, unsigned int cmd, unsigned long arg)
 			break;
 
 		case BLINK_LED:
-			blink_led_out(gpio_infor_dev.gpio_pin);	
+			blink_led_out(gpio_infor_dev.gpio_pin);
 			break;
 
 		default:
-			break;	
+			break;
 	}
 	return 0;
 }
@@ -328,10 +331,14 @@ irqreturn_t ex_gpio_irq(int irq, void *dev_id)
 
 	irq_gpio = dev_id;
 
-	if(false == check_change_event(irq_gpio->pin))
+	if(irq_gpio->gpio_sel != 0)
 	{
 		return IRQ_NONE;
-	} 
+	}
+	if(false == check_change_event(irq_gpio->gpio_pin))
+	{
+		return IRQ_NONE;
+	}
 
 	irq_gpio->set_val = ~(irq_gpio->set_val);
 
@@ -341,7 +348,9 @@ irqreturn_t ex_gpio_irq(int irq, void *dev_id)
 static int __init gpio_init(void)
 {
 	int ret_val;
-	uint8_t idx_dev;
+	int idx_dev;
+	int idx_count;
+	char *name_irq;
 
 	ret_val = alloc_chrdev_region(&gpio_dev.dev_num, 0, NO_GPIO, "gpio_dev");
 	if(ret_val)
@@ -361,54 +370,90 @@ static int __init gpio_init(void)
 
 	for(idx_dev = 0; idx_dev < NO_GPIO; idx_dev++)
 	{
-		gpio_dev.dev[idx_dev] = device_create(gpio_dev.dev_cls, NULL, MKDEV(MAJOR(gpio_dev.dev_num), MINOR(gpio_dev.dev_num) + idx_dev), NULL, "dev_gpio%d", idx_dev);
+		gpio_dev.dev[idx_dev] = device_create(gpio_dev.dev_cls, NULL, MKDEV(MAJOR(gpio_dev.dev_num), \
+					MINOR(gpio_dev.dev_num) + idx_dev), NULL, "ex_gpio%d", idx_dev);
 		if(NULL == gpio_dev.dev[idx_dev])
 		{
 			printk(KERN_WARNING "cannot register device file for device\n");
+			if(idx_dev > 0)
+			{
+				idx_dev--;
+fail_alloc_cdev:
+					while(idx_dev >= 0)
+					{
+						device_destroy(gpio_dev.dev_cls, MKDEV(MAJOR(gpio_dev.dev_num), \
+									MINOR(gpio_dev.dev_num) + idx_dev));
+						idx_dev--;
+					}
+			}
 			goto fail_register_device;
 		}
 
-		gpio_dev.cdev_dev = cdev_alloc();
-		if(NULL == gpio_dev.cdev_dev)
+		gpio_dev.cdev_dev[idx_dev] = cdev_alloc();
+		if(NULL == gpio_dev.cdev_dev[idx_dev])
 		{
 			printk(KERN_WARNING "Fail to allocate memory for cdev\n");
+fail_register_cdev_file:
+			idx_count = idx_dev - 1;
+			while (idx_count >= 0) {
+				/* code */
+				cdev_del(gpio_dev.cdev_dev[idx_count]);
+				idx_count--;
+			}
+
 			goto fail_alloc_cdev;
 		}
-		cdev_init(gpio_dev.cdev_dev, &fops);
-		ret_val = cdev_add(gpio_dev.cdev_dev, gpio_dev.dev_num, 1);
+		cdev_init(gpio_dev.cdev_dev[idx_dev], &fops);
+		ret_val = cdev_add(gpio_dev.cdev_dev[idx_dev], MKDEV(MAJOR(gpio_dev.dev_num), \
+					MINOR(gpio_dev.dev_num) + idx_dev), 1);
 		if(0 > ret_val)
 		{
 			printk(KERN_WARNING "fail to add device file into device number\n");
+			cdev_del(gpio_dev.cdev_dev[idx_dev]);
 			goto fail_register_cdev_file;
 		}
+		memset(&gpio_ctrl_pin[idx_dev], 0, sizeof(GPIO_INFOR_DEV));
+		gpio_ctrl_pin[idx_dev].gpio_pin = gpio_pin_val[idx_dev];
+		gpio_ctrl_pin[idx_dev].irq_no		= gpio_to_irq(gpio_ctrl_pin[idx_dev].gpio_pin);
+		name_irq = kzalloc(20, GFP_KERNEL);
+		sprintf(name_irq, "%s%d","ex_gpio_irq", idx_dev);
+		ret_val = request_irq(gpio_ctrl_pin[idx_dev].irq_no, ex_gpio_irq, IRQF_SHARED, name_irq, (void *)(&gpio_ctrl_pin[idx_dev]) );
+		kfree(name_irq);
 	}
 
 	printk("successfully create gpio device driver\n");
 
 	return 0;
 
-fail_register_cdev_file:
-	cdev_del(gpio_dev.cdev_dev);
-fail_alloc_cdev:
-	device_destroy(gpio_dev.dev_cls, gpio_dev.dev_num);
+// fail_register_cdev_file:
+// 	cdev_del(gpio_dev.cdev_dev);
+// fail_alloc_cdev:
+// 	device_destroy(gpio_dev.dev_cls, gpio_dev.dev_num);
 fail_register_device:
 	class_destroy(gpio_dev.dev_cls);
 fail_register_class:
-	unregister_chrdev_region(gpio_dev.dev_num, NO_GPIO);	
+	unregister_chrdev_region(gpio_dev.dev_num, NO_GPIO);
 	return ret_val;
 }
 
 static void __exit gpio_exit(void)
 {
+	int idx_dev;
 	printk("Release gpio device driver\n");
 
-	cdev_del(gpio_dev.cdev_dev);
+	for (idx_dev = 0; idx_dev < NO_GPIO; idx_dev++)
+	{
+		/* code */
+		cdev_del(gpio_dev.cdev_dev[idx_dev]);
 
-	device_destroy(gpio_dev.dev_cls, gpio_dev.dev_num);
+		device_destroy(gpio_dev.dev_cls, MKDEV(MAJOR(gpio_dev.dev_num), \
+					MINOR(gpio_dev.dev_num) + idx_dev));
+	}
+
 
 	class_destroy(gpio_dev.dev_cls);
 
-	unregister_chrdev_region(gpio_dev.dev_num, 3);	
+	unregister_chrdev_region(gpio_dev.dev_num, 3);
 
 	printk("Driver is removed\n");
 }
