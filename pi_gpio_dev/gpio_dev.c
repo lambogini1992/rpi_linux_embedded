@@ -62,18 +62,6 @@ static struct file_operations fops = {
 	.unlocked_ioctl = dev_ioctl,
 };
 
-static void init_gpio_base(void)
-{
-	gpio_base = (volatile uint32_t *)ioremap(GPIO_BASE, TOTAL_GPIO_REG);
-	printk("%d\n", *gpio_base);
-}
-
-static void release_gpio(void)
-{
-	iounmap(gpio_base);
-	gpio_base = NULL;
-}
-
 static void set_input_func_pin(uint16_t gpio_pin)
 {
 	int major_pin;
@@ -121,27 +109,39 @@ static void set_output_func_pin(uint16_t gpio_pin)
 	switch(major_pin)
 	{
 		case 0:
+			printk(KERN_INFO "VALUE OF GPFSEL0 BEFORE CHANGE:%.8x", gpio_base[GPFSEL0]);
 			gpio_base[GPFSEL0] |= 1 << minor_pin;
+			printk(KERN_INFO "VALUE OF GPFSEL0 AFTER CHANGE:%.8x", gpio_base[GPFSEL0]);
 			break;
 
 		case 1:
+			printk(KERN_INFO "VALUE OF GPFSEL1 BEFORE CHANGE:%.8x", gpio_base[GPFSEL1]);
 			gpio_base[GPFSEL1] |= 1 << minor_pin;
+			printk(KERN_INFO "VALUE OF GPFSEL1 AFTER CHANGE:%.8x", gpio_base[GPFSEL1]);
 			break;
 
 		case 2:
+			printk(KERN_INFO "VALUE OF GPFSEL2 BEFORE CHANGE:%.8x", gpio_base[GPFSEL2]);
 			gpio_base[GPFSEL2] |= 1 << minor_pin;
+			printk(KERN_INFO "VALUE OF GPFSEL2 AFTER CHANGE:%.8x", gpio_base[GPFSEL2]);
 			break;
 
 		case 3:
+			printk(KERN_INFO "VALUE OF GPFSEL3 BEFORE CHANGE:%.8x", gpio_base[GPFSEL3]);
 			gpio_base[GPFSEL3] |= 1 << minor_pin;
+			printk(KERN_INFO "VALUE OF GPFSEL3 AFTER CHANGE:%.8x", gpio_base[GPFSEL3]);
 			break;
 
 		case 4:
+			printk(KERN_INFO "VALUE OF GPFSEL4 BEFORE CHANGE:%.8x", gpio_base[GPFSEL4]);
 			gpio_base[GPFSEL4] |= 1 << minor_pin;
+			printk(KERN_INFO "VALUE OF GPFSEL4 AFTER CHANGE:%.8x", gpio_base[GPFSEL4]);
 			break;
 
 		case 5:
+			printk(KERN_INFO "VALUE OF GPFSEL5 BEFORE CHANGE:%.8x", gpio_base[GPFSEL5]);
 			gpio_base[GPFSEL5] |= 1 << minor_pin;
+			printk(KERN_INFO "VALUE OF GPFSEL5 AFTER CHANGE:%.8x", gpio_base[GPFSEL5]);
 			break;
 	}
 }
@@ -156,24 +156,32 @@ static int set_level_pin(uint16_t gpio_pin, uint8_t level)
 		case 0:
 			if(pin <= 31)
 			{
+				printk(KERN_INFO "VALUE OF GPCLR0 BEFORE CHANGE:%.8x", gpio_base[GPCLR0]);
 				gpio_base[GPCLR0] |= 1 << pin;
+				printk(KERN_INFO "VALUE OF GPCLR0 AFTER CHANGE:%.8x", gpio_base[GPCLR0]);
 			}
 			else
 			{
 				pin = pin - 31;
+				printk(KERN_INFO "VALUE OF GPCLR1 BEFORE CHANGE:%.8x", gpio_base[GPCLR1]);
 				gpio_base[GPCLR1] |= 1 << pin;
+				printk(KERN_INFO "VALUE OF GPCLR1 AFTER CHANGE:%.8x", gpio_base[GPCLR1]);
 			}
 			break;
 
 		case 1:
 			if(pin <= 31)
 			{
+				printk(KERN_INFO "VALUE OF GPSET0 BEFORE CHANGE:%.8x", gpio_base[GPSET0]);
 				gpio_base[GPSET0] |= 1 << pin;
+				printk(KERN_INFO "VALUE OF GPSET0 AFTER CHANGE:%.8x", gpio_base[GPSET0]);
 			}
 			else
 			{
 				pin = pin - 31;
+				printk(KERN_INFO "VALUE OF GPSET1 BEFORE CHANGE:%.8x", gpio_base[GPSET1]);
 				gpio_base[GPSET1] |= 1 << pin;
+				printk(KERN_INFO "VALUE OF GPSET1 AFTER CHANGE:%.8x", gpio_base[GPSET1]);
 			}
 			break;
 
@@ -354,6 +362,7 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 		printk(KERN_INFO "set pin %d to become output\n", gpio_pin_val[node_dev]);
 		if(gpio_ctrl_pin[node_dev].irq_no != 0)
 		{
+			gpio_ctrl_pin[node_dev].irq_no = 0;
 			free_irq(gpio_ctrl_pin[node_dev].irq_no, (void *)(&gpio_ctrl_pin[node_dev]));
 		}
 		gpio_ctrl_pin[node_dev].gpio_sel = 1;
@@ -363,7 +372,7 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 	{
 		if(1 == gpio_ctrl_pin[node_dev].gpio_sel)
 		{
-			printk(KERN_INFO "set pin %d to high\n", gpio_pin_val[node_dev]);
+			printk(KERN_INFO "set pin %d to high\n", gpio_ctrl_pin[node_dev].gpio_pin);
 			gpio_ctrl_pin[node_dev].set_level = 1;
 			(void)set_level_pin(gpio_ctrl_pin[node_dev].gpio_pin, gpio_ctrl_pin[node_dev].set_level);
 		}
@@ -376,7 +385,7 @@ static ssize_t dev_write(struct file*filep, const char __user *buf, size_t len, 
 	{
 		if(1 == gpio_ctrl_pin[node_dev].gpio_sel)
 		{
-			printk(KERN_INFO "set pin %d to high\n", gpio_pin_val[node_dev]);
+			printk(KERN_INFO "set pin %d to low\n", gpio_ctrl_pin[node_dev].gpio_pin);
 			gpio_ctrl_pin[node_dev].set_level = 0;
 			(void)set_level_pin(gpio_ctrl_pin[node_dev].gpio_pin, gpio_ctrl_pin[node_dev].set_level);
 		}
@@ -445,11 +454,13 @@ static int __init gpio_init(void)
 	int idx_dev;
 	int idx_count;
 
+	gpio_base = (volatile uint32_t *)ioremap_nocache(GPIO_BASE, TOTAL_GPIO_REG);
+
 	ret_val = alloc_chrdev_region(&gpio_dev.dev_num, 0, NO_GPIO, "gpio_dev");
 	if(ret_val)
 	{
 		printk("can not register major no\n");
-		return ret_val;
+		goto FAIL_REGISTER_DEVICE_NUMBER;
 	}
 
 	printk(KERN_INFO "register successfully major %d and minor %d\n", MAJOR(gpio_dev.dev_num), MINOR(gpio_dev.dev_num));
@@ -508,8 +519,9 @@ fail_register_cdev_file:
 		}
 		memset(&gpio_ctrl_pin[idx_dev], 1, sizeof(GPIO_INFOR_DEV));
 		gpio_ctrl_pin[idx_dev].gpio_pin = gpio_pin_val[idx_dev];
+		gpio_ctrl_pin[idx_dev].irq_no = 0;
 	}
-	init_gpio_base();
+
 	printk("successfully create gpio device driver\n");
 
 	return 0;
@@ -522,19 +534,21 @@ fail_register_device:
 	class_destroy(gpio_dev.dev_cls);
 fail_register_class:
 	unregister_chrdev_region(gpio_dev.dev_num, NO_GPIO);
-	return ret_val;
+FAIL_REGISTER_DEVICE_NUMBER:
+		iounmap(gpio_base);
 }
 
 static void __exit gpio_exit(void)
 {
 	int idx_dev;
 	printk("Release gpio device driver\n");
-	release_gpio();
+
 	for (idx_dev = 0; idx_dev < NO_GPIO; idx_dev++)
 	{
 		/* code */
 		if(gpio_ctrl_pin[idx_dev].irq_no != 0)
 		{
+			gpio_ctrl_pin[idx_dev].irq_no = 0;
 			free_irq(gpio_ctrl_pin[idx_dev].irq_no, (void *)(&gpio_ctrl_pin[idx_dev]));
 		}
 
@@ -548,7 +562,7 @@ static void __exit gpio_exit(void)
 	class_destroy(gpio_dev.dev_cls);
 
 	unregister_chrdev_region(gpio_dev.dev_num, 3);
-
+	iounmap(gpio_base);
 	printk("Driver is removed\n");
 }
 
