@@ -229,6 +229,7 @@ static void set_input_func_pin(uint16_t gpio_pin)
 
 	major_pin = gpio_pin/10;
 	minor_pin = gpio_pin - (major_pin*10);
+	minor_pin = minor_pin * 3;
 
 	switch(major_pin)
 	{
@@ -265,6 +266,7 @@ static void set_output_func_pin(uint16_t gpio_pin)
 
 	major_pin = gpio_pin/10;
 	minor_pin = gpio_pin - (major_pin*10);
+	minor_pin = minor_pin * 3;
 
 	switch(major_pin)
 	{
