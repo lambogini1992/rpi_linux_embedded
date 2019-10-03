@@ -619,6 +619,7 @@
 			#clock-cells = <0x1>;
 			reg = <0x7e215000 0x8>;
 			clocks = <0x8 0x14>;
+			status = "okay";
 			phandle = <0x10>;
 		};
 
