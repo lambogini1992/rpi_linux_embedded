@@ -21,6 +21,8 @@
 #include <linux/workqueue.h>
 #include <linux/tty_ldisc.h>
 #include <linux/tty_flip.h>
+#include <linux/tty_driver.h>
+#include <linux/serdev.h>
 
 
 #define DRIVER_NAME "SERIAL_MCU_DRIVERs"
@@ -34,6 +36,7 @@ static volatile uint32_t *gpio_base = NULL;
 struct resource *res;
 uint8_t set_level;
 
+static struct tty_driver *mcu_uart_tty_driver;
 
 
 /*Register character device*/
@@ -110,6 +113,7 @@ static int device_probe(struct platform_device *pdev)
 	int ret_val;
 	const struct  of_device_id *match;
 	int res_map_size;
+	struct tty_driver *tty_drv;
 
 	printk(KERN_INFO "Hello! This is UART DEVICES\n");
 
@@ -122,8 +126,39 @@ static int device_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+	mcu_uart_tty_driver = tty_drv = alloc_tty_driver(1);
+
+	if (!tty_drv)
+		return -ENOMEM;
+
+	tty_drv->driver_name 			= "mcu_uart_tty";
+	tty_drv->name        			= "tty_mcu";
+	tty_drv->major		 			= 0;
+	tty_drv->minor_start 			= 0;
+	tty_drv->type 		 			= TTY_DRIVER_TYPE_SERIAL;
+	tty_drv->subtype 	 			= SERIAL_TYPE_NORMAL;
+	tty_drv->flags 					= TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
+	tty_drv->init_termios 			= tty_std_termios;
+	tty_drv->init_termios.c_cflag 	= B9600 | CS8 | CREAD | HUPCL | CLOCAL;
+	tty_drv->init_termios.c_ispeed 	= 9600;
+	tty_drv->init_termios.c_ospeed 	= 9600;
+
+	tty_set_operations(tty_drv, &mcu_uart_ops);
+
+	ret_val = tty_register_driver(tty_drv);
+	if(ret_val)
+	{
+		printk(KERN_ERR "FAIL TO REGISTER TTY DEVICE DRIVER \n\n");
+		goto fail_regs_tty;
+	}
 
 
+
+	return 0;
+fail_regs_mcu_uart:
+	tty_unregister_driver(tty_drv);
+fail_regs_tty:
+	put_tty_driver(tty_drv);
 	return ret_val;
 }
 
@@ -131,16 +166,7 @@ static int device_remove(struct platform_device *pdev)
 {
 	printk("Goodbye DEVICE SERIAL\n");
 
-	cdev_del(exam_dev.cdev_dev);
 
-	device_destroy(exam_dev.dev_cls, exam_dev.dev_num);
-
-	class_destroy(exam_dev.dev_cls);
-
-	unregister_chrdev_region(exam_dev.dev_num, 1);
-
-	iounmap(gpio_base);
-	gpio_base = NULL;
 
 	return 0;
 }
