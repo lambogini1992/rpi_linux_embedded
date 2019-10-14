@@ -1,4 +1,3 @@
-p
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -16,48 +15,16 @@ p
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
-#include <linux/serial_core.h>
+#include <linux/tty.h>
+#include <linux/serial.h>
+#include <linux/interrupt.h>
+#include <linux/workqueue.h>
+#include <linux/tty_ldisc.h>
+#include <linux/tty_flip.h>
 
 
-#define DRIVER_NAME "DEV_SERIAL"
-#define DEV_NAME    "tty_dev_s"
-
-/*THIS IS DATA BUFFER IF BIT DLAB = 0*/
-#define AUX_MU_IO_REG								0
-
-/*ENABLE INTERRUPT IF BIT DLAB = 0*/
-/*SET BAUDRATE IF BIT DLAB = 1*/
-#define AUX_MU_IIR_REG							1
-
-/*THIS REGISTER IS SHOW THE INTERRUPT STATUS*/
-/*CAN USING FOR CLEAR FIFO REVC AND TRANS BUFFER*/
-#define AUX_MU_IER_REG							2
-
-/*THIS REGISTER IS USED FOR CONTROL LINE DATA FORMAT
-**GIVES ACCESS BAUDRATE REGISTER*/
-#define AUX_MU_LCR_REG 							3
-
-/*register controls the 'modem' signals*/
-#define AUX_MU_MCR_REG 							4
-
-/*register shows the data status*/
-#define AUX_MU_LSR_REG 							5
-
-/*register shows the 'modem' status*/
-#define AUX_MU_MSR_REG							6
-
-#define AUX_MU_SCRATCH							7
-
-/*provides access to some extra useful and nice features not
-**found on a normal 16550 UART*/
-#define AUX_MU_CNTL_REG 						8
-
-/*provides a lot of useful information about the internal status*/
-#define AUX_MU_STAT_REG 						9
-
-/*USING FOR SETTING BAUDRATE of device*/
-#define AUX_MU_BAUD									10
-
+#define DRIVER_NAME "SERIAL_MCU_DRIVERs"
+#define DEV_NAME    "serial_mcu"
 
 
 
@@ -67,76 +34,59 @@ static volatile uint32_t *gpio_base = NULL;
 struct resource *res;
 uint8_t set_level;
 
-typedef struct _bcm_uart_
-{
-	struct uart_port port;
 
-}
-
-
-struct _exam_dev_
-{
-	dev_t dev_num;
-	struct cdev *cdev_dev;
-	struct class *dev_cls;
-	struct device *dev;
-}exam_dev;
 
 /*Register character device*/
-static int dev_open(struct inode *, struct file *);
-static int dev_close(struct inode *, struct file *);
-static ssize_t dev_read(struct file*, char __user *, size_t, loff_t *);
-static ssize_t dev_write(struct file *, const char __user *, size_t, loff_t *);
-static long dev_ioctl(struct file *, unsigned int, unsigned long);
+static int open_uart_mcu(struct inode *, struct file *);
+static int close_uart_mcu(struct inode *, struct file *);
+static ssize_t read_uart_mcu(struct file*, char __user *, size_t, loff_t *);
+static ssize_t write_uart_mcu(struct file *, const char __user *, size_t, loff_t *);
+static long ioclt_uart_mcu(struct file *, unsigned int, unsigned long);
 
 
-static struct file_operations fops = {
-	.owner = THIS_MODULE,
-	.open = dev_open,
-	.release = dev_close,
-	.read = dev_read,
-	.write = dev_write,
+static const struct tty_operations mcu_uart_ops = {
+	.open				= mcu_uart_open,
+	.close				= mcu_uart_close,
+	.write				= mcu_uart_write,
+	.write_room			= mcu_uart_write_room,
+	.chars_in_buffer	= mcu_uart_chars_in_buffer,
+	.send_xchar			= mcu_uart_send_xchar,
+	.throttle			= mcu_uart_throttle,
+	.unthrottle			= mcu_uart_unthrottle,
+	.set_termios		= mcu_uart_set_termios,
+	.hangup				= mcu_uart_hangup,
+	.break_ctl			= mcu_uart_break_ctl,
+	.tiocmget			= mcu_uart_tiocmget,
+	.tiocmset			= mcu_uart_tiocmset,
+	.install			= mcu_uart_install,
+	.cleanup			= mcu_uart_cleanup,
+	.proc_show			= mcu_uart_proc_show,
 };
-
-
-static inline void uart_write_reg(struct uart_port *port, u32 reg, u32 val)
-{
-	__raw_write(val, port->membase + reg);
-}
-
-static inline u32 uart_read_reg(struct uart_port *port, u32 reg)
-{
-	 return __raw_read(port->membase + reg);
-}
-
-static inline
-
 /*FUNCTION DEVICE FILE*/
-static int dev_open(struct inode *inode, struct file *fp)
+static int mcu_uart_open(struct inode *inode, struct file *fp)
 {
 	printk("Open Driver file\n");
-	set_direction(18);
 	printk("Kernel is set GPIO PIN 18 to become OUTPUT\n");
 	return 0;
 }
 
-static int dev_close(struct inode *inode, struct file *fp)
+static int mcu_uart_close(struct inode *inode, struct file *fp)
 {
 	printk("Close Driver Device File\n");
 	return 0;
 }
 
-static ssize_t dev_read(struct file *fp, char __user *ubuf, size_t size_of, loff_t *offset)
+static ssize_t read_uart_mcu(struct file *fp, char __user *ubuf, size_t size_of, loff_t *offset)
 {
 	return size_of;
 }
 
-static ssize_t dev_write(struct file *fp, const char __user *buf, size_t size_of, loff_t *offset)
+static ssize_t mcu_uart_write(struct file *fp, const char __user *buf, size_t size_of, loff_t *offset)
 {
 	return size_of;
 }
 
-static long dev_ioctl(struct file *fops, unsigned int cmd, unsigned long len)
+static long ioclt_uart_mcu(struct file *fops, unsigned int cmd, unsigned long len)
 {
 	return len;
 }
@@ -145,13 +95,13 @@ static long dev_ioctl(struct file *fops, unsigned int cmd, unsigned long len)
 static int device_probe(struct platform_device *pdev);
 static int device_remove(struct platform_device *pdev);
 
-static const struct of_device_id test_leds_of_match[] =
+static const struct of_device_id test_uart_of_match[] =
 {
-	{.compatible = "bcm, dev_serial", },
+	{.compatible = "bcm, mcu_uart", },
 	{},
 };
 
-MODULE_DEVICE_TABLE(of, test_leds_of_match);
+MODULE_DEVICE_TABLE(of, test_uart_of_match);
 
 
 
@@ -165,87 +115,14 @@ static int device_probe(struct platform_device *pdev)
 
 	res = NULL;
 
-	match = of_match_device(test_leds_of_match, &(pdev->dev));
+	match = of_match_device(test_uart_of_match, &(pdev->dev));
 	if(!match)
 	{
 		printk(KERN_ALERT "Fail to matching device and device table\n");
 		return -EINVAL;
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if(!res)
-	{
-		printk(KERN_ALERT "Fail to get address register of device\n");
-		return -EINVAL;
-	}
 
-	res_map_size = res->end -res->start + 1;
-
-	printk(KERN_INFO "Register of device driver start at %x and has size is %x", res->start, res_map_size);
-
-	gpio_base = ioremap_nocache(res->start, res_map_size);
-	if(!gpio_base)
-	{
-		printk(KERN_ALERT "Fail to mapping register to kernel space\n");
-		return -EINVAL;
-	}
-
-	ret_val = alloc_chrdev_region(&exam_dev.dev_num, 0, 1, "exam_dev");
-	if(ret_val)
-	{
-		printk(KERN_ALERT "Fail to allocate character device\n");
-		goto FAIL_ALLOCATE_CHRDEV;
-	}
-	printk(KERN_INFO "Allocate succesfully char device with major %d and minor %d\n", \
-		MAJOR(exam_dev.dev_num), MINOR(exam_dev.dev_num));
-
-	exam_dev.dev_cls = class_create(THIS_MODULE, "class_exam_dev_serial");
-	if(NULL == exam_dev.dev_cls)
-	{
-		printk(KERN_ALERT "Fail to create class for device\n");
-		goto FAIL_CREATE_CLS;
-	}
-
-	exam_dev.dev = device_create(exam_dev.dev_cls, NULL, exam_dev.dev_num, NULL, "dev_serial_exam");
-	if(NULL == exam_dev.dev)
-	{
-		printk(KERN_ALERT "Fail to create device\n");
-		goto FAIL_CREATE_DEV;
-	}
-
-	exam_dev.cdev_dev = cdev_alloc();
-	if(NULL == exam_dev.cdev_dev)
-	{
-		printk(KERN_ALERT "Fail to allocate cdev");
-		goto FAIL_ALLOCATE_CDEV;
-	}
-
-	cdev_init(exam_dev.cdev_dev, &fops);
-	ret_val = cdev_add(exam_dev.cdev_dev, exam_dev.dev_num, 1);
-	if(0 > ret_val)
-	{
-		printk(KERN_ALERT "Fail to add device file with device driver\n");
-		goto FAIL_ADD_CDEV;
-	}
-
-	printk(KERN_INFO "Create platform device file in dev folder\n");
-
-	return 0;
-/*FAIL TO CREATE CHARACTER DEVICE*/
-FAIL_ADD_CDEV:
-	cdev_del(exam_dev.cdev_dev);
-
-FAIL_ALLOCATE_CDEV:
-	device_destroy(exam_dev.dev_cls, exam_dev.dev_num);
-
-FAIL_CREATE_DEV:
-	class_destroy(exam_dev.dev_cls);
-
-FAIL_CREATE_CLS:
-	unregister_chrdev_region(exam_dev.dev_num, 1);
-
-FAIL_ALLOCATE_CHRDEV:
-	iounmap(gpio_base);
 
 	return ret_val;
 }
