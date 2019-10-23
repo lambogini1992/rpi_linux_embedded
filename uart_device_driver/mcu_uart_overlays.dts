@@ -1,0 +1,24 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+	
+	compatible = "raspberrypi,3-model-b", "brcm,bcm2837";
+	model = "Raspberry Pi 3 Model B";
+
+	fragment@0 {
+
+		target = <&serial1>;
+
+		__overlay__{
+
+			status = "okay";
+
+			uart_mcu: uart_mcu {
+			
+				compatible = "uart, mcu_stm32f4";
+
+			};
+		};
+	};	
+};
