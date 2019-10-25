@@ -17,7 +17,7 @@
 			uart_mcu: uart_mcu {
 			
 				compatible = "uart, mcu_stm32f4";
-
+				max-speed = <112500>;
 			};
 		};
 	};	

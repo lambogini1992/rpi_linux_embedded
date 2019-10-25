@@ -93,57 +93,60 @@ static int device_probe(struct platform_device *pdev)
 	const struct  of_device_id *match;
 	int res_map_size;
 	struct tty_driver *tty_drv;
+	uint16_t br_speed;
 
 	printk(KERN_INFO "Hello! This is UART MCU DEVICES\n");
 
 	res = NULL;
 
-	// match = of_match_device(test_uart_of_match, &(pdev->dev));
-	// if(!match)
-	// {
-	// 	printk(KERN_ALERT "Fail to matching device and device table\n");
-	// 	return -EINVAL;
-	// }
+	match = of_match_device(test_uart_of_match, &(pdev->dev));
+	if(!match)
+	{
+		printk(KERN_ALERT "Fail to matching device and device table\n");
+		return -EINVAL;
+	}
+	
+	br_speed = of_property_read_u32_index(pdev->dev.of_node, "max-speed", 0, sizeof(uint16_t));
 
-	// mcu_uart_tty_driver = tty_drv = alloc_tty_driver(1);
+	mcu_uart_tty_driver = tty_drv = alloc_tty_driver(1);
 
-	// if (!tty_drv)
-	// 	return -ENOMEM;
+	if (!tty_drv)
+		return -ENOMEM;
 
-	// tty_drv->driver_name 			= "mcu_uart_tty";
-	// tty_drv->name        			= "tty_mcu";
-	// tty_drv->major		 			= 0;
-	// tty_drv->minor_start 			= 0;
-	// tty_drv->type 		 			= TTY_DRIVER_TYPE_SERIAL;
-	// tty_drv->subtype 	 			= SERIAL_TYPE_NORMAL;
-	// tty_drv->flags 					= TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
-	// tty_drv->init_termios 			= tty_std_termios;
-	// tty_drv->init_termios.c_cflag 	= B9600 | CS8 | CREAD | HUPCL | CLOCAL;
-	// tty_drv->init_termios.c_ispeed 	= 9600;
-	// tty_drv->init_termios.c_ospeed 	= 9600;
+	tty_drv->driver_name 			= "mcu_uart_tty";
+	tty_drv->name        			= "tty_mcu";
+	tty_drv->major		 			= 0;
+	tty_drv->minor_start 			= 0;
+	tty_drv->type 		 			= TTY_DRIVER_TYPE_SERIAL;
+	tty_drv->subtype 	 			= SERIAL_TYPE_NORMAL;
+	tty_drv->flags 					= TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
+	tty_drv->init_termios 			= tty_std_termios;
+	tty_drv->init_termios.c_cflag 	= B9600 | CS8 | CREAD | HUPCL | CLOCAL;
+	tty_drv->init_termios.c_ispeed 	= br_speed;
+	tty_drv->init_termios.c_ospeed 	= br_speed;
 
-	// tty_set_operations(tty_drv, &mcu_uart_ops);
+	tty_set_operations(tty_drv, &mcu_uart_ops);
 
-	// ret_val = tty_register_driver(tty_drv);
-	// if(ret_val)
-	// {
-	// 	printk(KERN_ERR "FAIL TO REGISTER TTY DEVICE DRIVER \n\n");
-	// 	goto fail_regs_tty;
-	// }
+	ret_val = tty_register_driver(tty_drv);
+	if(ret_val)
+	{
+		printk(KERN_ERR "FAIL TO REGISTER TTY DEVICE DRIVER \n\n");
+		goto fail_regs_tty;
+	}
 
 	return 0;
-// fail_regs_mcu_uart:
-// 	tty_unregister_driver(tty_drv);
-// fail_regs_tty:
-// 	put_tty_driver(tty_drv);
-// 	return ret_val;
+fail_regs_mcu_uart:
+	tty_unregister_driver(tty_drv);
+fail_regs_tty:
+	put_tty_driver(tty_drv);
+	return ret_val;
 }
 
 static int device_remove(struct platform_device *pdev)
 {
 	printk("Goodbye MCU DEVICE SERIAL\n");
-	// tty_unregister_driver(mcu_uart_tty_driver);
-	// put_tty_driver(mcu_uart_tty_driver);
+	tty_unregister_driver(mcu_uart_tty_driver);
+	put_tty_driver(mcu_uart_tty_driver);
 
 	return 0;
 }
