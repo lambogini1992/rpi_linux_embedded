@@ -98,45 +98,38 @@ static int device_probe(struct platform_device *pdev)
 
 	res = NULL;
 
-	// match = of_match_device(test_uart_of_match, &(pdev->dev));
-	// if(!match)
-	// {
-	// 	printk(KERN_ALERT "Fail to matching device and device table\n");
-	// 	return -EINVAL;
-	// }
+// 	mcu_uart_tty_driver = tty_drv = alloc_tty_driver(1);
 
-	// mcu_uart_tty_driver = tty_drv = alloc_tty_driver(1);
+// 	if (!tty_drv)
+// 		return -ENOMEM;
 
-	// if (!tty_drv)
-	// 	return -ENOMEM;
+// 	tty_drv->driver_name 			= "mcu_uart_tty";
+// 	tty_drv->name        			= "tty_mcu";
+// 	tty_drv->major		 			= 0;
+// 	tty_drv->minor_start 			= 0;
+// 	tty_drv->type 		 			= TTY_DRIVER_TYPE_SERIAL;
+// 	tty_drv->subtype 	 			= SERIAL_TYPE_NORMAL;
+// 	tty_drv->flags 					= TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
+// 	tty_drv->init_termios 			= tty_std_termios;
+// 	tty_drv->init_termios.c_cflag 	= B9600 | CS8 | CREAD | HUPCL | CLOCAL;
+// 	tty_drv->init_termios.c_ispeed 	= 9600;
+// 	tty_drv->init_termios.c_ospeed 	= 9600;
 
-	// tty_drv->driver_name 			= "mcu_uart_tty";
-	// tty_drv->name        			= "tty_mcu";
-	// tty_drv->major		 			= 0;
-	// tty_drv->minor_start 			= 0;
-	// tty_drv->type 		 			= TTY_DRIVER_TYPE_SERIAL;
-	// tty_drv->subtype 	 			= SERIAL_TYPE_NORMAL;
-	// tty_drv->flags 					= TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
-	// tty_drv->init_termios 			= tty_std_termios;
-	// tty_drv->init_termios.c_cflag 	= B9600 | CS8 | CREAD | HUPCL | CLOCAL;
-	// tty_drv->init_termios.c_ispeed 	= 9600;
-	// tty_drv->init_termios.c_ospeed 	= 9600;
+// 	tty_set_operations(tty_drv, &mcu_uart_ops);
 
-	// tty_set_operations(tty_drv, &mcu_uart_ops);
+// 	ret_val = tty_register_driver(tty_drv);
+// 	if(ret_val)
+// 	{
+// 		printk(KERN_ERR "FAIL TO REGISTER TTY DEVICE DRIVER \n\n");
+// 		goto fail_regs_tty;
+// 	}
 
-	// ret_val = tty_register_driver(tty_drv);
-	// if(ret_val)
-	// {
-	// 	printk(KERN_ERR "FAIL TO REGISTER TTY DEVICE DRIVER \n\n");
-	// 	goto fail_regs_tty;
-	// }
-
-	return 0;
+// 	return 0;
 // fail_regs_mcu_uart:
 // 	tty_unregister_driver(tty_drv);
 // fail_regs_tty:
 // 	put_tty_driver(tty_drv);
-// 	return ret_val;
+	return ret_val;
 }
 
 static int device_remove(struct platform_device *pdev)
@@ -150,7 +143,7 @@ static int device_remove(struct platform_device *pdev)
 
 static const struct of_device_id test_uart_of_match[] =
 {
-	{.compatible = "uart, mcu_stm32f4", NULL},
+	{.compatible = "uart, mcu_stm32", NULL},
 	{},
 };
 
