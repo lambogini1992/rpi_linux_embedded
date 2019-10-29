@@ -93,6 +93,7 @@ static int device_probe(struct platform_device *pdev)
 	const struct  of_device_id *match;
 	int res_map_size;
 	struct tty_driver *tty_drv;
+	uint16_t br_speed;
 
 	printk(KERN_INFO "Hello! This is UART MCU DEVICES\n");
 
@@ -129,14 +130,15 @@ static int device_probe(struct platform_device *pdev)
 // 	tty_unregister_driver(tty_drv);
 // fail_regs_tty:
 // 	put_tty_driver(tty_drv);
+
 	return ret_val;
 }
 
 static int device_remove(struct platform_device *pdev)
 {
 	printk("Goodbye MCU DEVICE SERIAL\n");
-	// tty_unregister_driver(mcu_uart_tty_driver);
-	// put_tty_driver(mcu_uart_tty_driver);
+	tty_unregister_driver(mcu_uart_tty_driver);
+	put_tty_driver(mcu_uart_tty_driver);
 
 	return 0;
 }
