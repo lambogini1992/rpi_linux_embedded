@@ -83,6 +83,11 @@ struct tty_ldisc_ops mcu_serial_ldisc =
 	.recieve_buf2 = mcu_serial_receive_buf2,
 };
 
+int	mcu_serial_open(struct tty_struct *tty)
+{
+	printk("Open Serial Device\n");
+	return 0;
+}
 
 /*Using for init device type*/
 /*Start create device platform driver*/
