@@ -5,26 +5,52 @@
 	
 	compatible = "brcm,bcm2837";
 	
-	#address-cells = <1>;
-	#size-cells = <0>;
-
-	fragment@0 {
-		
-		reg = <0>;
-
-		target = <&uart1>;
-		
-		__overlay__{
-
+fragment@0 {
+		target = <&spi0>;
+		__overlay__ {
 			status = "okay";
+		};
+	};
 
+	fragment@1 {
+		target = <&spidev0>;
+		__overlay__ {
+			status = "disabled";
+		};
+	};
+
+	fragment@2 {
+		target = <&spidev1>;
+		__overlay__ {
+			status = "disabled";
+		};
+	};
+
+	fragment@3 {
+		target = <&gpio>;
+		__overlay__ {
+			mcu_uart_pins: mcu_uart_pins {
+				brcm,pins = <255>; /* illegal default value */
+				brcm,function = <0>; /* in */
+				brcm,pull = <0>; /* none */
+			};
+		};
+	};
+
+	fragment@4 {
+		target = <&spi0>;
+		__overlay__ {
+			/* needed to avoid dtc warning */
 			#address-cells = <1>;
 			#size-cells = <0>;
 
-			uart_mcu@0 {
-
+			mcu_uart: mcu_uart@1 {
 				compatible = "uart, mcu_stm32";
-				
+				reg = <1>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&mcu_uart_pins>;
+
+				spi-max-frequency = <2000000>;
 			};
 		};
 	};	

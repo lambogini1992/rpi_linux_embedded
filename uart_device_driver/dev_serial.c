@@ -54,7 +54,6 @@ ssize_t mcu_serial_write(struct tty_struct * tty, struct file * file, const unsi
 int	mcu_serial_ioctl(struct tty_struct * tty, struct file * file, unsigned int cmd, unsigned long arg);
 int	mcu_serial_compat_ioctl(struct tty_struct * tty, struct file * file, unsigned int cmd, unsigned long arg);
 void mcu_serial_set_termios(struct tty_struct *tty, struct ktermios * old);
-int	mcu_serial_poll(struct tty_struct * tty, struct file * file, poll_table *wait);
 void mcu_serial_receive_buf(struct tty_struct *tty, const unsigned char *cp, char *fp, int count);
 void mcu_serial_write_wakeup(struct tty_struct *tty);
 int mcu_serial_hangup(struct tty_struct *tty);
@@ -68,19 +67,16 @@ struct tty_ldisc_ops mcu_serial_ldisc =
 	.name  = "n_mcu",
 	.num   = N_MCU,
 	.open  = mcu_serial_open,
-	.close = mcu_serial_close,
-	.flush_buffer = mcu_serial_flush_buffer,
-	.read = mcu_serial_read,
-	.write = mcu_serial_write,
-	.ioctl = mcu_serial_ioctl,
-	.compat_ioctl = mcu_serial_compat_ioctl,
-	.set_termios = mcu_serial_set_termios,
-	.poll = mcu_serial_poll,
-	.hangup = mcu_serial_hangup,
-	.recieve_buf = mcu_serial_receive_buf,
-	.write_wakeup = mcu_serial_write_wakeup,
-	.dcd_change = mcu_serial_dcd_change,
-	.recieve_buf2 = mcu_serial_receive_buf2,
+	// .close = mcu_serial_close,
+	// .flush_buffer = mcu_serial_flush_buffer,
+	// .read = mcu_serial_read,
+	// .write = mcu_serial_write,
+	// .ioctl = mcu_serial_ioctl,
+	// .compat_ioctl = mcu_serial_compat_ioctl,
+	// .set_termios = mcu_serial_set_termios,
+	// .hangup = mcu_serial_hangup,
+	// .write_wakeup = mcu_serial_write_wakeup,
+	// .dcd_change = mcu_serial_dcd_change,
 };
 
 int	mcu_serial_open(struct tty_struct *tty)

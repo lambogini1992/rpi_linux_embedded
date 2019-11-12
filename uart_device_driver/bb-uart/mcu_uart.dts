@@ -1,0 +1,50 @@
+/dts-v1/;
+/plugin/;
+
+/{
+	compatible = "ti,beaglebone", "ti,beaglebone-black";
+	
+	part-number = "MCU_UART";
+	version = "2626";
+
+	exclusive-use =
+			"P9.24",
+			"P9.26",
+			"uart1";
+
+
+	fragment@0{
+		target = <&am33xx_pinmux>;
+		
+		__overlay__{
+			
+			bb_uart_mcu_pin: pinmux_bb_uart_pins {
+				
+				pinctrl-single,pins = <0x184 0x20 0x180 0x20>;
+			
+			};
+			
+		};
+	};	
+
+	fragment@1{
+
+		target = <&uart1>;
+
+		__overlay__{
+
+			bb_uart_mcu {
+
+				status = "okay";
+				
+				compatible = "ti,bb_uart_mcu";
+				pinctrl-names = "default";
+				pinctrl-0 = <&bb_uart_mcu_pin>;
+
+			};
+
+		};
+
+	};	
+
+};
