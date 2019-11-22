@@ -1,20 +1,35 @@
-uboot:
-sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- am335x_boneblack_vboot_defconfig
+https://www.digikey.com/eewiki/display/linuxonarm/BeagleBone+Black ///follow this link for booting u-boot
 
-sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf-
+Building uboot:
+
+	git clone https://github.com/u-boot/u-boot
+	cd u-boot/
+	git checkout v2019.04 -b tmp
+
+	wget -c https://github.com/eewiki/u-boot-patches/raw/master/v2019.04/0001-am335x_evm-uEnv.txt-bootz-n-fixes.patch
+	wget -c https://github.com/eewiki/u-boot-patches/raw/master/v2019.04/0002-U-Boot-BeagleBone-Cape-Manager.patch
+	  
+	patch -p1 < 0001-am335x_evm-uEnv.txt-bootz-n-fixes.patch
+	patch -p1 < 0002-U-Boot-BeagleBone-Cape-Manager.patch
+
+	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- distclean
+
+	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- am335x_evm_defconfig
+
+	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf-
 
 
-linux:
+Building linux kernel:
 
-sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- bb.org_defconfig
+	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- bb.org_defconfig
 
-sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- uImage dtbs LOADADDR=0x80008000 -j4
+	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- uImage dtbs LOADADDR=0x80008000 -j4
 
-sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- -j4 modules
+	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- -j4 modules
 
-sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- INSTALL_MOD_PATH=/home/anhpt26/beaglebone-black/mnt/rfs/ modules_install
+	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- INSTALL_MOD_PATH=/home/anhpt26/beaglebone-black/mnt/rfs/ modules_install
 
-sync
+	sync
 
 
 content of uEnv.txt file:
