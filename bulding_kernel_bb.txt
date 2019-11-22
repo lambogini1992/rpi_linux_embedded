@@ -1,0 +1,25 @@
+uboot:
+sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- am335x_boneblack_vboot_defconfig
+
+sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf-
+
+
+linux:
+
+sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- bb.org_defconfig
+
+sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- uImage dtbs LOADADDR=0x80008000 -j4
+
+sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- -j4 modules
+
+sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- INSTALL_MOD_PATH=/home/anhpt26/beaglebone-black/mnt/rfs/ modules_install
+
+sync
+
+
+content of uEnv.txt file:
+
+			console=ttyS0,115200n8
+			netargs=setenv bootargs console=ttyO0,115200n8 root=/dev/mmcblk0p2 ro rootfstype=ext4 rootwait debug earlyprintk mem=512M
+			netboot=echo Booting from microSD ...; setenv autoload no ; load mmc 0:1 ${loadaddr} uImage ; load mmc 0:1 ${fdtaddr} am335x-boneblack.dtb ; run netargs ; bootm ${loadaddr} - ${fdtaddr}
+			uenvcmd=run netboot
