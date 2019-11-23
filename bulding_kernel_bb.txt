@@ -18,18 +18,27 @@ Building uboot:
 
 	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf-
 
+	///////another way//////
+	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- am335x_evm_config|omap3_beagle_config
+
+	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf-
+
+	we can follow the link
+	https://elinux.org/Building_for_BeagleBone
+	http://beagleboard.org/project/U-Boot+%28V1%29/
+
 
 Building linux kernel:
 
-	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- bb.org_defconfig
+sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- bb.org_defconfig
 
-	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- uImage dtbs LOADADDR=0x80008000 -j4
+sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- uImage dtbs LOADADDR=0x80008000 -j4
 
-	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- -j4 modules
+sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- -j4 modules
 
-	sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- INSTALL_MOD_PATH=/home/anhpt26/beaglebone-black/mnt/rfs/ modules_install
+sudo make ARCH=arm CROSS_COMPILE=/opt/gcc-arm-linux/bin/arm-linux-gnueabihf- INSTALL_MOD_PATH=/home/anhpt26/beaglebone-black/mnt/rfs/ modules_install
 
-	sync
+sync
 
 
 content of uEnv.txt file:
@@ -38,9 +47,3 @@ content of uEnv.txt file:
 			netargs=setenv bootargs console=ttyO0,115200n8 root=/dev/mmcblk0p2 ro rootfstype=ext4 rootwait debug earlyprintk mem=512M
 			netboot=echo Booting from microSD ...; setenv autoload no ; load mmc 0:1 ${loadaddr} uImage ; load mmc 0:1 ${fdtaddr} am335x-boneblack.dtb ; run netargs ; bootm ${loadaddr} - ${fdtaddr}
 			uenvcmd=run netboot
-			
-			
-			sudo cp arch/arm/boot/dts/am335x-boneblack*.dtb ../mnt/boot/
-			sudo cp arch/arm/boot/zImage ../mnt/boot/
-			sudo cp arch/arm/boot/uImage ../mnt/boot/
-			
