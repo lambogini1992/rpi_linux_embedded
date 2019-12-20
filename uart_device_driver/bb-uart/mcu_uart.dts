@@ -1,50 +1,38 @@
+/*
+ * Copyright (c) 2016 Zubeen Tolani <ZeekHuge - zeekhuge@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License version 2 as published by
+ * the Free Software Foundation.
+ */
+
 /dts-v1/;
 /plugin/;
 
 /{
-	compatible = "ti,beaglebone", "ti,beaglebone-black";
-	
-	part-number = "MCU_UART";
-	version = "2626";
+    compatible = "ti,beaglebone", "ti,beaglebone-black";
+    part-number = "BB-MCU-UART";
+    version = "00A0";
 
-	exclusive-use =
-			"P9.24",
-			"P9.26",
-			"uart1";
+	aliases {
+		pi0 = &pi0;
+	};
 
+    /* identification */
 
-	fragment@0{
-		target = <&am33xx_pinmux>;
+	fragment@0 {
+		target = <&ocp>;
+
+		__overlay__ {
 		
-		__overlay__{
-			
-			bb_uart_mcu_pin: pinmux_bb_uart_pins {
-				
-				pinctrl-single,pins = <0x184 0x20 0x180 0x20>;
-			
-			};
-			
-		};
-	};	
-
-	fragment@1{
-
-		target = <&uart1>;
-
-		__overlay__{
-
-			bb_uart_mcu {
+			pi0: pi0@f00 {
 
 				status = "okay";
-				
-				compatible = "ti,bb_uart_mcu";
-				pinctrl-names = "default";
-				pinctrl-0 = <&bb_uart_mcu_pin>;
 
+				compatible = "ti,pibus0";
 			};
 
 		};
 
-	};	
-
+	};
 };
