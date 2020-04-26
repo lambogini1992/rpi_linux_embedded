@@ -1,0 +1,60 @@
+They are subsystem library, used for iio subsystem: 
+		#include <linux/iio/iio.h>
+		#include <linux/iio/sysfs.h> 
+		#include <linux/iio/events.h> 
+		#include <linux/iio/buffer.h> 
+		#include <linux/iio/trigger.h>
+
+IIO data structures:
+	struct iio_dev:
+		This struct represents IIO device, it describe device and driver. 
+			+ How many channel are avaiable on iio device
+			+ What mode does device operate: trigger buffer, one-shot?
+			+ What hook is device available?
+		Importance feild in struct iio_dev:
+			struct iio_dev 
+			{
+				[...]
+				int modes;
+				int currentmode;
+				struct device dev;
+				struct iio_buffer *buffer;
+				int scan_bytes;
+				const unsigned long *available_scan_masks;
+				const unsigned long *active_scan_mask;
+				bool scan_timestamp;
+				struct iio_trigger *trig;
+				struct iio_poll_func *pollfunc;
+				struct iio_chan_spec const *channels;
+				int num_channels;
+				const char *name;
+				const struct iio_info *info;
+				const struct iio_buffer_setup_ops *setup_ops;
+				struct cdev chrdev;
+			};
+
+			+ mode: this represent the mode iio subsystem support device.
+				INDIO_DIRECT_MODE
+				INDIO_BUFFER_TRIGGERED
+				INDIO_BUFFER_HARDWARE
+				INDIO_ALL_BUFFER_MODES
+			+ currentmode: this represent the mode acctually used by the device
+			+ dev: this is struct device
+			+ buffer: this data buffer when we use buffer trigger mode. For enable this buffer, we use iio_triggered_buffer_setup()
+			+ scan_bytes: this is number byte captured to be fed to buffer. 
+
+IIO device channels
+	- sysfs is the method to be used for export system information from kernel to user space of specific device.
+		
+	- struct iio_chan_spec : this is specification for single channel
+	- IIO device channel is data channel(that is type of data user want to get from IIO devices). One IIO device can have more than 1 data channel. Ex:
+		+ A themmormeter has only one channel to get tempurature
+		+ A humidity sensor has 2 channel to get tempurature and humidity.
+		+ A accelerometer has 3 channels to get data of 3 axis acceleration.
+
+	- Channel can be seen like attribute of sysfs devices via on the form of bitmarsk.
+		+ info_mask_separate: marks the attributes as being specific to this channel.
+		+ info_mask_shared_by_type: marks the attribute as being shared by all channels of the same type.
+		+ info_mask_shared_by_dir: marks the attribute as being shared by all channels of the same direction
+		+ info_mask_shared_by_all: marks the attribute as being shared by all channels, whatever their type or direction may be	
+
