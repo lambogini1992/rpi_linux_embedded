@@ -20,6 +20,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/i2c.h>
@@ -230,7 +231,7 @@ static int fxos8700_change_mode(struct i2c_client *client, int type,int active)
 	u8 data;
 	int acc_act,mag_act;
 	int ret;
-	struct fxos8700_data *pdata =  i2c_get_clientdata(client);
+
 	acc_act = FXOS8700_STANDBY;
 	mag_act = FXOS8700_STANDBY;
 	data = i2c_smbus_read_byte_data(client, FXOS8700_CTRL_REG1);
@@ -756,6 +757,68 @@ static int fxos8700_write_raw(struct iio_dev *indio_dev, \
 	return 0;
 }
 
+static ssize_t fxos8700_set_mode_active(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t len)
+{
+	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
+	struct fxos8700_data *pdata = iio_priv(indio_dev);
+	int active;
+	unsigned long long int_data;
+	int ret;
+
+	ret = kstrtouint(buf, 0, &int_data);
+	if(ret)
+	{
+		dev_err(&pdata->client->dev, "Fail to get data from userspace %d!\n", ret);
+		return ret;
+	}
+
+	active = (int)int_data;
+	ret = fxos8700_change_mode(pdata->client, FXOS8700_TYPE_ACC, FXOS8700_ACTIVED);
+	if(ret)
+	{
+		dev_err(&pdata->client->dev, "Enable acc device failed %d!\n", ret);
+		return -EINVAL;
+	}
+
+	atomic_set(&pdata->acc_active, active);
+	printk("Success to change mode device fxos8700\n");
+
+	return len;
+}
+
+static ssize_t fxos8700_show_mode_active(struct device *dev,\
+				struct device_attribute *attr,\
+				char *buf)
+{
+	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
+	struct fxos8700_data *pdata = iio_priv(indio_dev);
+	int mode_active;
+	int ret;
+
+	mode_active = atomic_read(&pdata->acc_active);
+
+	switch(mode_active)
+	{
+		case 0:
+			ret = sprintf(buf, "%s\n", "Stand By");
+			break;
+
+		case 1:
+			ret = sprintf(buf, "%s\n", "Active");
+			break;
+
+		default:
+			ret = sprintf(buf, "%s\n", "Invalid");
+			break;	
+	}
+	return ret;
+}
+
+static IIO_DEVICE_ATTR(in_sensor_change_mode, S_IRUGO | S_IWUSR, \
+						fxos8700_show_mode_active,	\
+						fxos8700_set_mode_active, 0);
 static IIO_CONST_ATTR(in_accel_sampling_frequency_available,
 		      "1.5625 6.25 12.5 50 100 200 400 800");
 static IIO_CONST_ATTR(in_magn_sampling_frequency_available,
@@ -764,6 +827,7 @@ static IIO_CONST_ATTR(in_accel_scale_available, "0.000244 0.000488 0.000976");
 static IIO_CONST_ATTR(in_magn_scale_available, "0.000001200");
 
 static struct attribute *fxos8700_attrs[] = {
+	&iio_dev_attr_in_sensor_change_mode.dev_attr.attr,
 	&iio_const_attr_in_accel_sampling_frequency_available.dev_attr.attr,
 	&iio_const_attr_in_magn_sampling_frequency_available.dev_attr.attr,
 	&iio_const_attr_in_accel_scale_available.dev_attr.attr,
@@ -894,25 +958,6 @@ static int  fxos8700_probe(struct i2c_client *client,
 		goto err_init_device;
 	}
 
-	result = fxos8700_change_mode(client, FXOS8700_TYPE_ACC, FXOS8700_ACTIVED);
-	if(result)
-	{
-		dev_err(&client->dev, "Enable acc device failed!\n");
-		result = -EINVAL;
-		goto err_change_mode_acc;
-	}
-	printk("Success to Enable acc device fxos8700\n");
-
-	result = fxos8700_change_mode(client, FXOS8700_TYPE_MAG, FXOS8700_ACTIVED);
-	if(result)
-	{
-		dev_err(&client->dev, "Enable mag device failed!\n");
-		result = -EINVAL;
-		goto err_change_mode_acc;
-	}
-	printk("Success to Enable mag device fxos8700\n");
-
-
 	printk("Success to initialize device fxos8700\n");
 
 	printk("%s success for loading platform device i2c\n",__FUNCTION__);
@@ -948,22 +993,6 @@ static int fxos8700_remove(struct i2c_client *client)
 		return 0;
 	}
 
-	result = fxos8700_change_mode(client, FXOS8700_TYPE_ACC, FXOS8700_STANDBY);
-	if(result)
-	{
-		dev_err(&client->dev, "Enable acc device failed!\n");
-		result = -EINVAL;
-		// goto err_init_device;
-	}
-	printk("Success to Enable acc device fxos8700\n");
-
-	result = fxos8700_change_mode(client, FXOS8700_TYPE_MAG, FXOS8700_STANDBY);
-	if(result)
-	{
-		dev_err(&client->dev, "Enable mag device failed!\n");
-		result = -EINVAL;
-		// goto err_init_device;
-	}
 
 	printk("Success to Enable mag device fxos8700\n");
 
