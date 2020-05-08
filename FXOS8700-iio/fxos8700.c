@@ -65,6 +65,7 @@
 #define FXOS8700_SET_FIFO_TRIGGER			0x03
 #define FXOS8700_SET_FIFO_COUTN_WMARK		0x1A
 
+#define FXOS8700_INT_SOURCE_DATA_READY      0x01
 /* Bit definitions for FXOS8700_CTRL_REG1 */
 #define FXOS8700_CTRL_ODR_MSK       0x38
 #define FXOS8700_CTRL_ODR_MAX       0x00
@@ -558,9 +559,9 @@ static irqreturn_t fxos8700_irq_handler(int irq, void *dev)
 	int type_read;
 	int axis;
 	int ret;
-	s64 time_ns = iio_get_time_ns();
+	// s64 time_ns = iio_get_time_ns();
 
-	if(pf->irq != gpio_to_irq(pdata->irq_inq))
+	if(pf->irq != gpio_to_irq(pdata->irq_in))
 	{
 		goto err; 
 	}
@@ -705,7 +706,7 @@ static ssize_t fxos8700_set_mode_active(struct device *dev,
 	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
 	struct fxos8700_data *pdata = iio_priv(indio_dev);
 	int active;
-	unsigned long long int_data;
+	unsigned int int_data;
 	int ret;
 
 	ret = kstrtouint(buf, 0, &int_data);
@@ -813,7 +814,7 @@ static int fxos8700_data_rdy_trigger_set_state(struct iio_trigger *trig, bool st
 	}
 	if(state == true)
 	{
-		atomic_set(&pdata->acc_active, FXOS8700_ACTIVED);
+		atomic_set(&data->acc_active, FXOS8700_ACTIVED);
 	}
 	
 	atomic_set(&data->irq_set, state);
@@ -940,7 +941,7 @@ static int fxos8700_buffer_ops_predisable(struct iio_dev *indio_dev)
 	if(result < 0)
 	{
 		dev_err(&pdata->client->dev, "Fail to write config FIFO\n");
-		goto err;
+		goto out;
 	}
 
 
@@ -1037,7 +1038,7 @@ static int fxos8700_register_iio_trigger_buff(struct iio_dev *indio_dev, struct 
 		iio_trigger_generic_data_rdy_poll, IRQF_TRIGGER_RISING, \
 		"fxos8700_event", pdata->trig);
 	if (ret) {
-		dev_err(dev, "unable to request IRQ\n");
+		dev_err(indio_dev->dev.parent, "unable to request IRQ\n");
 		goto err_trigger_unregister;
 	}
 
@@ -1068,7 +1069,7 @@ static int  fxos8700_probe(struct i2c_client *client,
 	const struct of_device_id *match;
 	struct iio_dev *indio_dev;
 
-	match = of_match_device(of_fxos8700_id, &dev);
+	match = of_match_device(of_fxos8700_id, dev);
 	if(!match)
 	{
 		printk(KERN_ERR "Cannot detect match device fxos8700 sensor in device tree\n");
@@ -1134,7 +1135,8 @@ static int  fxos8700_probe(struct i2c_client *client,
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->info = &fxos8700_info;
 	
-	result = iio_triggered_buffer_setup(indio_dev, &iio_pollfunc_store_time, &fxos8700_irq_handler, fxos8700_buffer_ops);
+	result = iio_triggered_buffer_setup(indio_dev, &iio_pollfunc_store_time, \
+		&fxos8700_irq_handler, &fxos8700_buffer_ops);
 	if(result < 0)
 		goto err_out;
 	printk(KERN_INFO "IRQ GPIO FOR FXOS8700: %d\n", pdata->irq_in);
@@ -1169,7 +1171,7 @@ static int  fxos8700_probe(struct i2c_client *client,
 err_buffer_cleanup:
 	iio_triggered_buffer_cleanup(indio_dev);
 err_init_device:
-	fxos8700_unregister_input_device(pdata);
+	// fxos8700_unregister_input_device(pdata);
 err_register_input_device:
 	i2c_set_clientdata(client,NULL);
 	kfree(pdata);
