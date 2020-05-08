@@ -58,7 +58,12 @@
 
 #define ABS_STATUS 			ABS_WHEEL
 
+#define FXOS8700_DISABLE_IRQ		false
+#define FXOS8700_ENABLE_IRQ			true
 
+#define FXOS8700_DISABLE_FIFO				0x00
+#define FXOS8700_SET_FIFO_TRIGGER			0x03
+#define FXOS8700_SET_FIFO_COUTN_WMARK		0x1A
 
 /* Bit definitions for FXOS8700_CTRL_REG1 */
 #define FXOS8700_CTRL_ODR_MSK       0x38
@@ -114,7 +119,7 @@ enum fxos8700_scan_axis {
 	.info_mask_separate = BIT(IIO_CHAN_INFO_RAW), \
 	.info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SAMP_FREQ) \
 	| BIT(IIO_CHAN_INFO_SCALE), \
-	.scan_index = AXIS_##_axis,					\
+	.scan_index = FXOS8700_SCAN_ACCEL_##_axis,					\
 	.scan_type = {							\
 		.sign = 's',						\
 		.realbits = 16,						\
@@ -153,6 +158,7 @@ struct fxos8700_data{
 	
 	int irq_in;
 	
+	atomic_t irq_set;
 	atomic_t acc_delay;
 	atomic_t mag_delay;
 	atomic_t acc_active;
@@ -815,6 +821,33 @@ static ssize_t fxos8700_show_mode_active(struct device *dev,\
 	return ret;
 }
 
+static int fxos8700_config_interrupt(struct i2c_client *client, bool state)
+{
+	int result;
+	if(state == true)
+	{
+		result = i2c_smbus_write_byte_data(client, FXOS8700_CTRL_REG5, 0xff); //route to pin1
+		if (result < 0)
+			goto err;
+
+		result = i2c_smbus_write_byte_data(client, FXOS8700_CTRL_REG4, 0x01); //data ready enable
+		if (result < 0)
+			goto err;
+	}
+	else
+	{
+		result = i2c_smbus_write_byte_data(client, FXOS8700_CTRL_REG4, 0x00);//data ready disable
+		if (result < 0)
+			goto err;
+	}
+
+	return 0;
+err:
+	dev_err(&client->dev, "error when disable/enable buffer trigger fxos8700 device:(%d)", result);
+	return result;
+}
+
+
 static int fxos8700_data_rdy_trigger_set_state(struct iio_trigger *trig,
 		bool state)
 {
@@ -822,28 +855,153 @@ static int fxos8700_data_rdy_trigger_set_state(struct iio_trigger *trig,
 	struct fxos8700_data *data = iio_priv(indio_dev);
 	int result;
 
-	if(state == true)
-	{
-		result = i2c_smbus_write_byte_data(data->client, FXOS8700_CTRL_REG5, 0xff); //route to pin1
-		if (result < 0)
-			goto out;
-		result = i2c_smbus_write_byte_data(data->client, FXOS8700_CTRL_REG4, 0x01); //data ready enable
-		if (result < 0)
-			goto out;
-	}
-	else
-	{
-		result = i2c_smbus_write_byte_data(data->client, FXOS8700_CTRL_REG4, 0x00);//data ready disable
-		if (result < 0)
-			goto out;
-	}
 
+	result = fxos8700_config_interrupt(data->client, state);
+	if(result < 0)
+	{
+		goto err;
+	}
+	atomic_set(&data->irq_set, state);
 	return 0;
-out:
-	dev_err(&data->client->dev, "error when disable/enable buffer trigger fxos8700 device:(%d)", result);
+err:
+	dev_err(&data->client->dev, "Fail to set-up trigger");
 	return result;
 }
 
+static int fxos8700_try_reenable(struct iio_trigger *trig)
+{
+	struct iio_dev *indio_dev = iio_trigger_get_drvdata(trig);
+	struct fxos8700_data *data = iio_priv(indio_dev);
+	bool irq_set = atomic_read(&data->irq_set);
+	int result;
+
+	result = i2c_smbus_read_byte_data(data->client, FXOS8700_INT_SOURCE);
+	if(result < 0)
+	{
+		goto err;
+	}
+
+	if(!((result & FXOS8700_INT_SOURCE_DATA_READY) & (int)irq_set))
+	{
+		result = fxos8700_config_interrupt(data->client, irq_set);
+		if(result < 0)
+		{
+			goto out;
+		}
+	}
+
+	return 0;
+err:
+	dev_err(&data->client->dev, "Fail to read INT_SOURCE register");
+out:
+	dev_err(&data->client->dev, "Fail to reset trigger");
+	return result;
+}
+
+static int fxos8700_buffer_ops_preenable(struct iio_dev *indio_dev)
+{
+	struct fxos8700_data *pdata = iio_priv(indio_dev);
+	int ret;
+
+	/*change mode active for device*/
+	ret = fxos8700_change_mode(pdata->client, FXOS8700_TYPE_ACC, FXOS8700_ACTIVED);
+	if(ret < 0)
+	{
+		return ret;
+	}
+
+	atomic_set(&pdata->acc_active, FXOS8700_ACTIVED);
+
+	return 0;
+}
+ 
+ /*Config enable FIFO watermark*/
+static int fxos8700_buffer_ops_postenable(struct iio_dev *indio_dev)
+{
+	struct fxos8700_data *pdata = iio_priv(indio_dev);
+	int result;
+	uint8_t write_config;
+	int chip_status;
+
+
+	// if (indio_dev->currentmode == INDIO_BUFFER_TRIGGERED)
+	// 	return iio_triggered_buffer_postenable(indio_dev);
+
+	result = iio_triggered_buffer_postenable(indio_dev);
+	if(result < 0)
+	{
+		dev_err(&pdata->client->dev, "Fail to attach buffer to indio_dev\n");
+		goto out;
+	}
+
+	/*set value for fifo trigger mode and count fifo warter mark is 26*/
+	write_config = (uint8_t)((FXOS8700_SET_FIFO_TRIGGER << 5) | (FXOS8700_SET_FIFO_COUTN_WMARK));
+	
+	/*Refer datashet must set chip to stanby mode*/
+	chip_status = atomic_read(&pdata->acc_active);
+	if(chip_status = FXOS8700_ACTIVED)
+	{
+		 (void)fxos8700_change_mode(pdata->client, FXOS8700_TYPE_ACC, FXOS8700_STANDBY);
+	}
+	
+	result = i2c_smbus_write_byte_data(pdata->client, FXOS8700_F_SETUP, write_config);
+	if(result < 0)
+	{
+		result = fxos8700_change_mode(pdata->client, FXOS8700_TYPE_ACC, chip_status)
+		dev_err(&pdata->client->dev, "Fail to write config FIFO\n");
+		goto err;
+	}
+
+	(void)fxos8700_change_mode(pdata->client, FXOS8700_TYPE_ACC, chip_status)
+
+	return 0;
+err:
+	iio_triggered_buffer_predisable(indio_dev);	
+out:
+	return result;	
+}
+
+ /*Config Disable FIFO watermark*/ 
+static int fxos8700_buffer_ops_predisable(struct iio_dev *indio_dev)
+{
+	struct fxos8700_data *pdata = iio_priv(indio_dev);
+	int result;
+	uint8_t write_config;
+
+	result = iio_triggered_buffer_predisable(indio_dev);
+	if(result < 0)
+	{
+		dev_err(&pdata->client->dev, "Fail to attach buffer to indio_dev\n");
+		goto out;
+	}
+
+	result = fxos8700_change_mode(pdata->client, FXOS8700_TYPE_ACC, FXOS8700_STANDBY);
+	if(result < 0)
+	{
+		goto out;
+	}
+
+	result = i2c_smbus_write_byte_data(pdata->client, FXOS8700_F_SETUP, 0x00);
+	if(result < 0)
+	{
+		dev_err(&pdata->client->dev, "Fail to write config FIFO\n");
+		goto err;
+	}
+
+
+	return 0;
+out:
+	return result;	
+}
+
+ 
+static int fxos8700_buffer_ops_postdisable(struct iio_dev *indio_dev)
+{
+	struct fxos8700_data *pdata = iio_priv(indio_dev);
+	int ret;
+	atomic_set(&pdata->acc_active, FXOS8700_STANDBY);
+	return 0;
+}
 
 static IIO_DEVICE_ATTR(in_sensor_change_mode, S_IRUGO | S_IWUSR, \
 						fxos8700_show_mode_active,	\
@@ -864,9 +1022,17 @@ static struct attribute *fxos8700_attrs[] = {
 	NULL,
 };
 
+static const struct iio_buffer_setup_ops fxos8700_buffer_ops =
+{
+	.preenable   = &fxos8700_buffer_ops_preenable,
+	.postenable  = &fxos8700_buffer_ops_postenable,
+	.predisable  = &fxos8700_buffer_ops_predisable,
+	.postdisable = &fxos8700_buffer_ops_postdisable,
+};
+
 static const struct iio_trigger_ops fxos8700_trigger_ops = {
-	.set_trigger_state = fxos8700_data_rdy_trigger_set_state,
-	// .validate_device = &iio_trigger_validate_own_device,
+	.set_trigger_state  = fxos8700_data_rdy_trigger_set_state,
+	.try_reenable 		= &fxos8700_try_reenable,
 };
 
 static const struct attribute_group fxos8700_attrs_group = {
@@ -967,37 +1133,38 @@ static int  fxos8700_probe(struct i2c_client *client,
 	printk(KERN_INFO "IRQ GPIO FOR FXOS8700: %d\n", pdata->irq_in);
 	if(pdata->irq_in)
 	{
-		// pdata->trig = iio_trigger_alloc("%s-dev-%s", indio_dev->name, \
-		// 	"fxos8700");
-		// if (!pdata->trig) {
-		// 	result = -ENOMEM;
-		// 	goto err_out;
-		// }
+		atomic_set(&pdata->irq_set, FXOS8700_DISABLE_IRQ);
+		pdata->trig = iio_trigger_alloc("%s-dev-%s", indio_dev->name, \
+			indio_dev->);
+		if (!pdata->trig) {
+			result = -ENOMEM;
+			goto err_out;
+		}
 
-		// result = devm_request_irq(dev, gpio_to_irq(pdata->irq_in), \
-		// 	iio_trigger_generic_data_rdy_poll, IRQF_TRIGGER_RISING, \
-		// 	"fxos8700_event", pdata->trig);
-		// if (result) {
-		// 	dev_err(dev, "unable to request IRQ\n");
-		// 	goto err_trigger_free;
-		// }
+		pdata->trig->dev.parent = dev;
+		pdata->trig->ops = &fxos8700_trigger_ops;
+		iio_trigger_set_drvdata(pdata->trig, indio_dev);
 
-		// pdata->trig->dev.parent = dev;
-		// pdata->trig->ops = &fxos8700_trigger_ops;
-		// iio_trigger_set_drvdata(pdata->trig, indio_dev);
-		// indio_dev->trig = iio_trigger_get(pdata->trig);
+		result = devm_iio_trigger_register(&indio_dev->dev, pdata->trig);
+		if (result < 0) {
+			dev_err(&indio_dev->dev, "Failed to register iio trigger\n");
+			goto err_trigger_free;
+		}
 
-		// result = iio_trigger_register(pdata->trig);
-		// if (result)
-		// 	goto err_trigger_free;
-
-		// result = iio_triggered_buffer_setup(indio_dev, NULL, fxos8700_irq_handler, NULL);
-		// if (result < 0) {
-		// 	dev_err(dev, "unable to setup iio triggered buffer\n");
-		// 	goto err_trigger_unregister;
-		// }
+		result = devm_request_irq(dev, gpio_to_irq(pdata->irq_in), \
+			iio_trigger_generic_data_rdy_poll, IRQF_TRIGGER_RISING, \
+			"fxos8700_event", pdata->trig);
+		if (result) {
+			dev_err(dev, "unable to request IRQ\n");
+			goto err_trigger_free;
+		}
 	}
 
+	result = iio_triggered_buffer_setup(indio_dev, iio_pollfunc_store_time, fxos8700_irq_handler, &fxos8700_buffer_ops);
+	if (result < 0) {
+		dev_err(dev, "unable to setup iio triggered buffer\n");
+		goto err_trigger_unregister;
+	}
 	pdata->client = client;
 
 	
