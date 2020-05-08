@@ -1166,8 +1166,13 @@ static int  fxos8700_probe(struct i2c_client *client,
 	printk("%s success for loading platform device i2c\n",__FUNCTION__);
 
 	i2c_set_clientdata(client,indio_dev);
-	return devm_iio_device_register(&client->dev, indio_dev);
-
+	result = devm_iio_device_register(&client->dev, indio_dev);
+	if(result < 0)
+	{
+		dev_err(&client->dev, "unable to register iio device\n");
+		goto err_out;
+	}
+	return 0; 
 err_buffer_cleanup:
 	iio_triggered_buffer_cleanup(indio_dev);
 err_init_device:
@@ -1200,7 +1205,7 @@ static int fxos8700_remove(struct i2c_client *client)
 	printk("Success to unregister iio trigger buffer device fxos8700\n");
 
     fxos8700_device_stop(client);
-	devm_iio_device_register(&client->dev, indio_dev);
+	devm_iio_device_unregister(&client->dev, indio_dev);
 
     kfree(pdata);		
 	return 0;
