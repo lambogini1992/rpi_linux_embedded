@@ -583,7 +583,7 @@ static irqreturn_t fxos8700_irq_handler(int irq, void *dev)
 	// 	mutex_unlock(&pdata->mutex);	
 	// }
 
-	iio_push_to_buffers_with_timestamp(indio_dev, data_buff, time_ns);
+	iio_push_to_buffers_with_timestamp(indio_dev, data_buff, pf->timestamp);
 err:
 	iio_trigger_notify_done(indio_dev->trig);
 	
@@ -1041,11 +1041,11 @@ static int fxos8700_register_iio_trigger_buff(struct iio_dev *indio_dev, struct 
 		goto err_trigger_unregister;
 	}
 
-	ret = iio_triggered_buffer_setup(indio_dev,  &iio_pollfunc_store_time, &fxos8700_irq_handler, &fxos8700_buffer_ops);
-	if (ret < 0) {
-		dev_err(dev, "unable to setup iio triggered buffer\n");
-		goto err_trigger_unregister;
-	}
+	// ret = iio_triggered_buffer_setup(indio_dev,  &iio_pollfunc_store_time, &fxos8700_irq_handler, &fxos8700_buffer_ops);
+	// if (ret < 0) {
+	// 	dev_err(dev, "unable to setup iio triggered buffer\n");
+	// 	goto err_trigger_unregister;
+	// }
 
 	return 0;
 
@@ -1135,6 +1135,8 @@ static int  fxos8700_probe(struct i2c_client *client,
 	indio_dev->info = &fxos8700_info;
 	
 	result = iio_triggered_buffer_setup(indio_dev, &iio_pollfunc_store_time, &fxos8700_irq_handler, fxos8700_buffer_ops);
+	if(result < 0)
+		goto err_out;
 	printk(KERN_INFO "IRQ GPIO FOR FXOS8700: %d\n", pdata->irq_in);
 	if(pdata->irq_in)
 	{
