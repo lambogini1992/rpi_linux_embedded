@@ -1134,6 +1134,7 @@ static int  fxos8700_probe(struct i2c_client *client,
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->info = &fxos8700_info;
 	
+	result = iio_triggered_buffer_setup(indio_dev, &iio_pollfunc_store_time, &fxos8700_irq_handler, fxos8700_buffer_ops);
 	printk(KERN_INFO "IRQ GPIO FOR FXOS8700: %d\n", pdata->irq_in);
 	if(pdata->irq_in)
 	{
