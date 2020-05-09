@@ -377,17 +377,12 @@ static int fxos8700_read_data(struct i2c_client *client, int axis, int type, int
 
 	reg = reg + (axis - IIO_MOD_X)*2;
 
-	printk(KERN_INFO "Register read %d\n", reg);
-
 	ret = i2c_smbus_read_i2c_block_data(client, reg, 2, tmp_data);
 	if (ret < 2) {
 		dev_err(&client->dev, "i2c block read %s failed\n", (type == FXOS8700_TYPE_ACC ? "acc" : "mag"));
 		return -EIO;
 	}
 
-	printk(KERN_INFO "value data raw channel %d:%d\n", tmp_data[0], tmp_data[1]);
-
-	// *val = sign_extend32(be16_to_cpu(tmp_data), 15);
 	*val = ((tmp_data[0] << 8) & 0xff00) | tmp_data[1];
 
 	return 0;
@@ -549,73 +544,7 @@ static ssize_t fxos8700_motion_detect_store(struct device *dev,
 	return count;
 }
 
-/*create acc and mag input device to report sensor raw data , acc motion detect ...*/
-static int fxos8700_register_input_device(struct fxos8700_data *pdata)
-{
-	int result;
-	/*alloc acc input device*/
-	pdata->acc_idev = input_allocate_device();
-	if (!pdata->acc_idev) {
-		result = -ENOMEM;
-		dev_err(&pdata->client->dev, "alloc FXOS8700 acc input device failed!\n");
-		goto err_alloc_acc_input_device;
-	}
-	pdata->acc_idev->name = "FreescaleAccelerometer";
-	pdata->acc_idev->id.bustype = BUS_I2C;
-	pdata->acc_idev->evbit[0] = BIT_MASK(EV_ABS)|BIT_MASK(EV_REL);
-	input_set_abs_params(pdata->acc_idev, ABS_X, -0x7fff, 0x7fff, 0, 0);
-	input_set_abs_params(pdata->acc_idev, ABS_Y, -0x7fff, 0x7fff, 0, 0);
-	input_set_abs_params(pdata->acc_idev, ABS_Z, -0x7fff, 0x7fff, 0, 0);
-	pdata->acc_idev->relbit[0] = BIT_MASK(REL_X);
-	result = input_register_device(pdata->acc_idev);
-	if (result) {
-		dev_err(&pdata->client->dev, "register FXOS8700 acc input device failed!\n");
-		goto err_register_acc_input_device;
-	}
 
-	/*alloc mag input device*/
-	pdata->mag_idev = input_allocate_device();
-	if (!pdata->mag_idev) {
-		result = -ENOMEM;
-		dev_err(&pdata->client->dev, "alloc FXOS8700 mag input device failed!\n");
-		goto err_alloc_mag_input_device;
-	}
-	pdata->mag_idev->name = "FreescaleMagnetometer";
-	pdata->mag_idev->id.bustype = BUS_I2C;
-	pdata->mag_idev->evbit[0] = BIT_MASK(EV_ABS);
-	input_set_abs_params(pdata->mag_idev, ABS_X, -0x7fff, 0x7fff, 0, 0);
-	input_set_abs_params(pdata->mag_idev, ABS_Y, -0x7fff, 0x7fff, 0, 0);
-	input_set_abs_params(pdata->mag_idev, ABS_Z, -0x7fff, 0x7fff, 0, 0);
-	result = input_register_device(pdata->mag_idev);
-	if (result) {
-		dev_err(&pdata->client->dev, "register FXOS8700 mag device failed!\n");
-		goto err_register_mag_input_device;
-	}
-	return 0;
-err_register_mag_input_device:
-	input_free_device(pdata->mag_idev);
-err_alloc_mag_input_device:
-	input_unregister_device(pdata->acc_idev);
-err_register_acc_input_device:
-	input_free_device(pdata->acc_idev);
-err_alloc_acc_input_device:
-	return result;
-}
-
-static int fxos8700_unregister_input_device(struct fxos8700_data *pdata)
-{
-	if(pdata->acc_idev){
-		input_unregister_device(pdata->acc_idev);
-		input_free_device(pdata->acc_idev);
-		pdata->acc_idev = NULL;
-	}
-	if(pdata->mag_idev){
-		input_unregister_device(pdata->mag_idev);
-		input_free_device(pdata->mag_idev);
-		pdata->mag_idev = NULL;
-	}
-	return 0;
-}
 
 
 static irqreturn_t fxos8700_irq_handler(int irq, void *dev)
@@ -631,20 +560,28 @@ static irqreturn_t fxos8700_irq_handler(int irq, void *dev)
 	int ret;
 	s64 time_ns = iio_get_time_ns();
 
-	
-	for(idx = 0; idx < 3; idx++)
+	if(pf->irq != gpio_to_irq(pdata->irq_inq))
 	{
-		type_read = FXOS8700_TYPE_ACC;
-		axis      = fxos8700_chan_spec[idx].channel2;
-		mutex_lock(&pdata->mutex);
-		ret = fxos8700_read_data(pdata->client, axis, type_read, data_buff + idx);
-		if(ret)
-		{			
-			mutex_unlock(&pdata->mutex);
-			goto err;
-		}
-		mutex_unlock(&pdata->mutex);	
+		goto err; 
 	}
+	
+	data_buff[0] = 0x11;
+	data_buff[2] = 0x33;
+	data_buff[1] = 0x22;
+
+	// for(idx = 0; idx < 3; idx++)
+	// {
+	// 	type_read = FXOS8700_TYPE_ACC;
+	// 	axis      = fxos8700_chan_spec[idx].channel2;
+	// 	mutex_lock(&pdata->mutex);
+	// 	ret = fxos8700_read_data(pdata->client, axis, type_read, data_buff + idx);
+	// 	if(ret)
+	// 	{			
+	// 		mutex_unlock(&pdata->mutex);
+	// 		goto err;
+	// 	}
+	// 	mutex_unlock(&pdata->mutex);	
+	// }
 
 	iio_push_to_buffers_with_timestamp(indio_dev, data_buff, time_ns);
 err:
@@ -687,13 +624,10 @@ static int fxos8700_get_data_raw(struct fxos8700_data *pdata, struct iio_chan_sp
 	type_read = fxos8700_scan_mode(fxos8700_chan);
 	axis = fxos8700_chan->channel2;
 
-	mutex_lock(&pdata->mutex);
-	ret = fxos8700_read_data(pdata->client, axis, type_read, val);
-	mutex_unlock(&pdata->mutex);
+	ret = fxos8700_read_data(pdata->client, axis, type_read, val);	
 	if(ret)
 		goto err;
 		
-
 	return 0;
 err:
 	return ret;	
@@ -733,7 +667,9 @@ static int fxos8700_read_raw(struct iio_dev *indio_dev, \
 	switch(mask)
 	{
 		case IIO_CHAN_INFO_RAW:
+			mutex_lock(&pdata->mutex);
 			ret = fxos8700_get_data_raw(pdata, chan, val);
+			mutex_unlock(&pdata->mutex);
 			if (ret)
 				return ret;
 			printk(KERN_INFO "IIO_CHAN_INFO_RAW %d\n", *val);
@@ -848,19 +784,38 @@ err:
 }
 
 
-static int fxos8700_data_rdy_trigger_set_state(struct iio_trigger *trig,
-		bool state)
+static int fxos8700_data_rdy_trigger_set_state(struct iio_trigger *trig, bool state)
 {
 	struct iio_dev *indio_dev = iio_trigger_get_drvdata(trig);
 	struct fxos8700_data *data = iio_priv(indio_dev);
+	
 	int result;
 
-
+	printk(KERN_INFO, "FXOS8700: Enable or disable trigger set state\n");
+	result = fxos8700_change_mode(data->client, FXOS8700_TYPE_ACC, FXOS8700_STANDBY);
+	if(result)
+	{
+		dev_err(&data->client->dev, "Enable acc device failed %d!\n", result);
+		return -EINVAL;
+	}
 	result = fxos8700_config_interrupt(data->client, state);
 	if(result < 0)
 	{
 		goto err;
 	}
+	
+
+	result = fxos8700_change_mode(data->client, FXOS8700_TYPE_ACC, FXOS8700_ACTIVED);
+	if(result)
+	{
+		dev_err(&data->client->dev, "Enable acc device failed %d!\n", result);
+		return -EINVAL;
+	}
+	if(state == true)
+	{
+		atomic_set(&pdata->acc_active, FXOS8700_ACTIVED);
+	}
+	
 	atomic_set(&data->irq_set, state);
 	return 0;
 err:
@@ -875,6 +830,7 @@ static int fxos8700_try_reenable(struct iio_trigger *trig)
 	bool irq_set = atomic_read(&data->irq_set);
 	int result;
 
+	printk(KERN_INFO, "FXOS8700: Re-enable trigger set state\n");
 	result = i2c_smbus_read_byte_data(data->client, FXOS8700_INT_SOURCE);
 	if(result < 0)
 	{
@@ -904,6 +860,7 @@ static int fxos8700_buffer_ops_preenable(struct iio_dev *indio_dev)
 	int ret;
 
 	/*change mode active for device*/
+	printk(KERN_INFO, "FXOS8700: Pre-enable buffer\n");
 	ret = fxos8700_change_mode(pdata->client, FXOS8700_TYPE_ACC, FXOS8700_ACTIVED);
 	if(ret < 0)
 	{
@@ -923,10 +880,7 @@ static int fxos8700_buffer_ops_postenable(struct iio_dev *indio_dev)
 	uint8_t write_config;
 	int chip_status;
 
-
-	// if (indio_dev->currentmode == INDIO_BUFFER_TRIGGERED)
-	// 	return iio_triggered_buffer_postenable(indio_dev);
-
+	printk(KERN_INFO, "FXOS8700: Post-enable buffer\n");
 	result = iio_triggered_buffer_postenable(indio_dev);
 	if(result < 0)
 	{
@@ -947,12 +901,12 @@ static int fxos8700_buffer_ops_postenable(struct iio_dev *indio_dev)
 	result = i2c_smbus_write_byte_data(pdata->client, FXOS8700_F_SETUP, write_config);
 	if(result < 0)
 	{
-		result = fxos8700_change_mode(pdata->client, FXOS8700_TYPE_ACC, chip_status)
+		result = fxos8700_change_mode(pdata->client, FXOS8700_TYPE_ACC, chip_status);
 		dev_err(&pdata->client->dev, "Fail to write config FIFO\n");
 		goto err;
 	}
 
-	(void)fxos8700_change_mode(pdata->client, FXOS8700_TYPE_ACC, chip_status)
+	(void)fxos8700_change_mode(pdata->client, FXOS8700_TYPE_ACC, chip_status);
 
 	return 0;
 err:
@@ -968,6 +922,7 @@ static int fxos8700_buffer_ops_predisable(struct iio_dev *indio_dev)
 	int result;
 	uint8_t write_config;
 
+	printk(KERN_INFO, "FXOS8700: Pre-Disable buffer\n");
 	result = iio_triggered_buffer_predisable(indio_dev);
 	if(result < 0)
 	{
@@ -999,6 +954,9 @@ static int fxos8700_buffer_ops_postdisable(struct iio_dev *indio_dev)
 {
 	struct fxos8700_data *pdata = iio_priv(indio_dev);
 	int ret;
+
+	printk(KERN_INFO, "FXOS8700: Post-Disable buffer\n");
+
 	atomic_set(&pdata->acc_active, FXOS8700_STANDBY);
 	return 0;
 }
@@ -1031,7 +989,7 @@ static const struct iio_buffer_setup_ops fxos8700_buffer_ops =
 };
 
 static const struct iio_trigger_ops fxos8700_trigger_ops = {
-	.set_trigger_state  = fxos8700_data_rdy_trigger_set_state,
+	.set_trigger_state  = &fxos8700_data_rdy_trigger_set_state,
 	.try_reenable 		= &fxos8700_try_reenable,
 };
 
@@ -1052,6 +1010,52 @@ static const struct of_device_id of_fxos8700_id[] =
 };
 
 MODULE_DEVICE_TABLE(of, of_fxos8700_id);
+
+
+static int fxos8700_register_iio_trigger_buff(struct iio_dev *indio_dev, struct fxos8700_data *pdata)
+{
+	int ret;
+
+	atomic_set(&pdata->irq_set, FXOS8700_DISABLE_IRQ);
+	pdata->trig = iio_trigger_alloc("%s-dev-%d", indio_dev->name, indio_dev->id);
+	if (!pdata->trig) {
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	pdata->trig->dev.parent = indio_dev->dev.parent;
+	pdata->trig->ops = &fxos8700_trigger_ops;
+	iio_trigger_set_drvdata(pdata->trig, indio_dev);
+
+	ret = iio_trigger_register(pdata->trig);
+	if (ret < 0) {
+		dev_err(&indio_dev->dev, "Failed to register iio trigger\n");
+		goto err_trigger_free;
+	}
+
+	ret = devm_request_irq(indio_dev->dev.parent, gpio_to_irq(pdata->irq_in), \
+		iio_trigger_generic_data_rdy_poll, IRQF_TRIGGER_RISING, \
+		"fxos8700_event", pdata->trig);
+	if (ret) {
+		dev_err(dev, "unable to request IRQ\n");
+		goto err_trigger_unregister;
+	}
+
+	ret = iio_triggered_buffer_setup(indio_dev,  &iio_pollfunc_store_time, &fxos8700_irq_handler, &fxos8700_buffer_ops);
+	if (ret < 0) {
+		dev_err(dev, "unable to setup iio triggered buffer\n");
+		goto err_trigger_unregister;
+	}
+
+	return 0;
+
+err_trigger_unregister:
+	iio_trigger_unregister(pdata->trig);
+err_trigger_free:
+	iio_trigger_free(pdata->trig);
+err:
+	return ret;
+}
 
 
 static int  fxos8700_probe(struct i2c_client *client,
@@ -1133,48 +1137,16 @@ static int  fxos8700_probe(struct i2c_client *client,
 	printk(KERN_INFO "IRQ GPIO FOR FXOS8700: %d\n", pdata->irq_in);
 	if(pdata->irq_in)
 	{
-		atomic_set(&pdata->irq_set, FXOS8700_DISABLE_IRQ);
-		pdata->trig = iio_trigger_alloc("%s-dev-%s", indio_dev->name, \
-			indio_dev->);
-		if (!pdata->trig) {
-			result = -ENOMEM;
+		result = fxos8700_register_iio_trigger_buff(indio_dev, pdata);
+		if(result)
+		{
+			dev_err(&client->dev, "Fail to register iio trigger buffer\n");
 			goto err_out;
 		}
-
-		pdata->trig->dev.parent = dev;
-		pdata->trig->ops = &fxos8700_trigger_ops;
-		iio_trigger_set_drvdata(pdata->trig, indio_dev);
-
-		result = devm_iio_trigger_register(&indio_dev->dev, pdata->trig);
-		if (result < 0) {
-			dev_err(&indio_dev->dev, "Failed to register iio trigger\n");
-			goto err_trigger_free;
-		}
-
-		result = devm_request_irq(dev, gpio_to_irq(pdata->irq_in), \
-			iio_trigger_generic_data_rdy_poll, IRQF_TRIGGER_RISING, \
-			"fxos8700_event", pdata->trig);
-		if (result) {
-			dev_err(dev, "unable to request IRQ\n");
-			goto err_trigger_free;
-		}
 	}
 
-	result = iio_triggered_buffer_setup(indio_dev, iio_pollfunc_store_time, fxos8700_irq_handler, &fxos8700_buffer_ops);
-	if (result < 0) {
-		dev_err(dev, "unable to setup iio triggered buffer\n");
-		goto err_trigger_unregister;
-	}
 	pdata->client = client;
 
-	
-
-	// result = fxos8700_register_input_device(pdata);
-	// if (result) {
-	// 	dev_err(&client->dev, "create device file failed!\n");
-	// 	result = -EINVAL;
-	// 	goto err_register_input_device;
-	// }
 	printk("Success to register input device fxos8700\n");
 	
 	result = fxos8700_device_init(pdata);
@@ -1193,11 +1165,6 @@ static int  fxos8700_probe(struct i2c_client *client,
 
 err_buffer_cleanup:
 	iio_triggered_buffer_cleanup(indio_dev);
-err_trigger_unregister:
-	if (pdata->trig)
-		iio_trigger_unregister(pdata->trig);
-err_trigger_free:
-	iio_trigger_free(pdata->trig);
 err_init_device:
 	fxos8700_unregister_input_device(pdata);
 err_register_input_device:
@@ -1213,21 +1180,21 @@ static int fxos8700_remove(struct i2c_client *client)
 	struct iio_dev *indio_dev = i2c_get_clientdata(client);
 	struct fxos8700_data *pdata = iio_priv(indio_dev);
 	int result;
+
 	if(!pdata)
 		return 0;
-
-	iio_triggered_buffer_cleanup(indio_dev);
+	
 	if(pdata->trig)
 	{
+		iio_triggered_buffer_cleanup(indio_dev);
 		iio_trigger_unregister(pdata->trig);
 		iio_trigger_free(pdata->trig);
 	}
 
 
-	printk("Success to Enable mag device fxos8700\n");
+	printk("Success to unregister iio trigger buffer device fxos8700\n");
 
     fxos8700_device_stop(client);
-	fxos8700_unregister_input_device(pdata);
 	devm_iio_device_register(&client->dev, indio_dev);
 
     kfree(pdata);		
