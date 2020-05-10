@@ -1034,7 +1034,7 @@ static int fxos8700_register_iio_trigger_buff(struct iio_dev *indio_dev, struct 
 		goto err_trigger_free;
 	}
 
-	ret = devm_request_irq(indio_dev->dev.parent, gpio_to_irq(pdata->irq_in), \
+	ret = request_irq(gpio_to_irq(pdata->irq_in), \
 		iio_trigger_generic_data_rdy_poll, IRQF_TRIGGER_RISING, \
 		"fxos8700_event", pdata->trig);
 	if (ret) {
@@ -1115,12 +1115,12 @@ static int  fxos8700_probe(struct i2c_client *client,
 
     pdata = iio_priv(indio_dev);
 
-	pdata->irq_in = of_get_named_gpio(client->dev.of_node, "irq_property", 0);
-	if(!gpio_is_valid(pdata->irq_in))
-	{
-		dev_err(&client->dev, "Cannot get interrupt pin\n");
-		return -ENODEV;
-	}
+	// pdata->irq_in = of_get_named_gpio(client->dev.of_node, "irq_property", 0);
+	// if(!gpio_is_valid(pdata->irq_in))
+	// {
+	// 	dev_err(&client->dev, "Cannot get interrupt pin\n");
+	// 	return -ENODEV;
+	// }
 
 	atomic_set(&pdata->acc_delay, FXOS8700_DELAY_DEFAULT);
 	atomic_set(&pdata->mag_delay, FXOS8700_DELAY_DEFAULT);
@@ -1135,24 +1135,25 @@ static int  fxos8700_probe(struct i2c_client *client,
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->info = &fxos8700_info;
 	
+	/*Set-up for trigger buffer*/
 	result = iio_triggered_buffer_setup(indio_dev, &iio_pollfunc_store_time, \
 		&fxos8700_irq_handler, &fxos8700_buffer_ops);
 	if(result < 0)
 		goto err_out;
-	printk(KERN_INFO "IRQ GPIO FOR FXOS8700: %d\n", pdata->irq_in);
+	printk(KERN_INFO "IRQ GPIO FOR FXOS8700: %d\n", client->irq);
 	if(pdata->irq_in)
 	{
-		result = fxos8700_register_iio_trigger_buff(indio_dev, pdata);
-		if(result)
-		{
-			dev_err(&client->dev, "Fail to register iio trigger buffer\n");
-			goto err_out;
-		}
+		// result = fxos8700_register_iio_trigger_buff(indio_dev, pdata);
+		// if(result)
+		// {
+		// 	dev_err(&client->dev, "Fail to register iio trigger buffer\n");
+		// 	goto err_out;
+		// }
 	}
 
 	pdata->client = client;
 
-	printk("Success to register input device fxos8700\n");
+	printk("Success to register buffer trigger device fxos8700\n");
 	
 	result = fxos8700_device_init(pdata);
 	if (result) {
@@ -1194,9 +1195,10 @@ static int fxos8700_remove(struct i2c_client *client)
 	if(!pdata)
 		return 0;
 	
+	iio_triggered_buffer_cleanup(indio_dev);
 	if(pdata->trig)
 	{
-		iio_triggered_buffer_cleanup(indio_dev);
+		// free_irq(gpio_to_irq(pdata->irq_in), pdata->trig);
 		iio_trigger_unregister(pdata->trig);
 		iio_trigger_free(pdata->trig);
 	}
@@ -1241,12 +1243,12 @@ static const struct i2c_device_id fxos8700_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, fxos8700_id);
 
-static SIMPLE_DEV_PM_OPS(fxos8700_pm_ops, fxos8700_suspend, fxos8700_resume);
+// static SIMPLE_DEV_PM_OPS(fxos8700_pm_ops, fxos8700_suspend, fxos8700_resume);
 static struct i2c_driver fxos8700_driver = {
 	.driver = {
 		   .name = "fxos8700",
 		   .owner = THIS_MODULE,
-		   .pm = &fxos8700_pm_ops,
+		   // .pm = &fxos8700_pm_ops,
 		   .of_match_table		= of_match_ptr(of_fxos8700_id),
 		   },
 	.probe = fxos8700_probe,
