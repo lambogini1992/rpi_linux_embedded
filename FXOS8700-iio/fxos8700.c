@@ -1024,25 +1024,28 @@ static int fxos8700_register_iio_trigger_buff(struct i2c_client *client)
 		ret = -ENOMEM;
 		goto err;
 	}
+	printk(KERN_INFO "Success alocate iio trigger\n");
 
 	pdata->trig->dev.parent = &client->dev;
 	pdata->trig->ops = &fxos8700_trigger_ops;
 	iio_trigger_set_drvdata(pdata->trig, indio_dev);
+	printk(KERN_INFO "Success set private data for trigger\n");
 
 	ret = iio_trigger_register(pdata->trig);
 	if (ret < 0) {
 		dev_err(&indio_dev->dev, "Failed to register iio trigger\n");
 		goto err_trigger_free;
 	}
+	printk(KERN_INFO "Success register trigger\n");
 
-	ret = request_irq(client->irq, \
+	ret = devm_request_irq(&client->dev, client->irq, \
 		iio_trigger_generic_data_rdy_poll, IRQF_TRIGGER_RISING, \
-		"fxos8700_event", pdata->trig);
+		"fxos8700_event", indio_dev);
 	if (ret) {
 		dev_err(indio_dev->dev.parent, "unable to request IRQ\n");
 		goto err_trigger_unregister;
 	}
-
+	printk(KERN_INFO "Success request irq\n");
 	return 0;
 err_trigger_unregister:
 	iio_trigger_unregister(pdata->trig);
@@ -1067,13 +1070,22 @@ static void fxos8700_unregister_iio_trigger_buff(struct i2c_client *client)
 	{
 		if(pdata->trig)
 		{
-			free_irq(client->irq, pdata->trig);
+			
 			iio_trigger_unregister(pdata->trig);
 			iio_trigger_free(pdata->trig);
-			kfree(pdata);
+			
 		}
+		else
+		{
+			dev_err(&client->dev, "fail to get trigger data");
+		}
+		
 	}
-	
+	else
+	{
+		dev_err(&client->dev, "fail to get client IRQ");
+	}
+	kfree(pdata);
 }
 
 
