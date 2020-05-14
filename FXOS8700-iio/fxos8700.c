@@ -758,6 +758,9 @@ static ssize_t fxos8700_show_mode_active(struct device *dev,\
 	int mode_active;
 	int ret;
 
+	printk(KERN_INFO "FXOS8700: irq_count:irq_rdata:irq_fifo %d:%d:%d\n", \
+	pdata->irq_count, pdata->irq_rdata, pdata->irq_fifo);
+	
 	mode_active = atomic_read(&pdata->acc_active);
 
 	switch(mode_active)
@@ -1021,6 +1024,7 @@ static const struct iio_buffer_setup_ops fxos8700_buffer_ops =
 };
 
 static const struct iio_trigger_ops fxos8700_trigger_ops = {
+	.owner 				= THIS_MODULE,
 	.set_trigger_state  = fxos8700_data_rdy_trigger_set_state,
 	.try_reenable 		= fxos8700_try_reenable,
 };
@@ -1130,6 +1134,7 @@ static int  fxos8700_probe(struct i2c_client *client, \
 	struct i2c_adapter *adapter;
 	const struct of_device_id *match;
 	struct iio_dev *indio_dev;
+	struct iio_trigger *trig;
 
 	match = of_match_device(of_fxos8700_id, dev);
 	if(!match)
@@ -1160,7 +1165,7 @@ static int  fxos8700_probe(struct i2c_client *client, \
 		result = -EINVAL;
 		goto err_out;
 	}
-    pdata = kzalloc(sizeof(struct fxos8700_data), GFP_KERNEL);
+    pdata = devm_kzalloc(dev, sizeof(struct fxos8700_data), GFP_KERNEL);
 	if(!pdata){
 		result = -ENOMEM;
 		dev_err(dev, "alloc data memory error!\n");
@@ -1212,35 +1217,37 @@ static int  fxos8700_probe(struct i2c_client *client, \
 	if(client->irq > 0)
 	{
 		atomic_set(&pdata->irq_set, FXOS8700_DISABLE_IRQ);
-		result = devm_request_threaded_irq(dev, client->irq, \
-			iio_trigger_generic_data_rdy_poll, NULL, IRQF_TRIGGER_RISING, \
-			"fxos8700_event", pdata->trig);
-		if (result) {
-			dev_err(dev, "unable to request IRQ\n");
-			goto err_buffer_cleanup;
-		}
+
 		printk(KERN_INFO "Success request irq\n");
-		pdata->trig = iio_trigger_alloc("%s-trigger-iio", indio_dev->name);
-		if (!pdata->trig) {
+		trig = iio_trigger_alloc("sysfstrig-%d", indio_dev->id);
+		if (!trig) {
 			result = -ENOMEM;
 			dev_err(dev, "unable to allocate iio trigger\n");
 			goto erro_trigger_alloc;
 		}
-		printk(KERN_INFO "Success alocate iio trigger\n");
+		printk(KERN_INFO "Success alocate iio trigger %s\n", trig->name);
 
-		iio_trigger_set_drvdata(pdata->trig, indio_dev);
-		pdata->trig->dev.parent = &client->dev;
-		pdata->trig->ops = &fxos8700_trigger_ops;
+		result = devm_request_threaded_irq(dev, client->irq, \
+			iio_trigger_generic_data_rdy_poll, NULL, IRQF_TRIGGER_RISING, \
+			"fxos8700_event", trig);
+		if (result) {
+			dev_err(dev, "unable to request IRQ\n");
+			goto err_request_irq;
+		}
+
+		iio_trigger_set_drvdata(trig, indio_dev);
+		trig->dev.parent = &client->dev;
+		trig->ops = &fxos8700_trigger_ops;
 		
 		printk(KERN_INFO "Success set private data for trigger\n");
 
-		result = iio_trigger_register(pdata->trig);
+		result = iio_trigger_register(trig);
 		if (result < 0) {
 			dev_err(dev, "Failed to register iio trigger\n");
 			goto err_trigger_free;
 		}
-
-		indio_dev->trig  = pdata->trig;
+		pdata->trig      = trig;
+		indio_dev->trig  = iio_trigger_get(trig);
 
 		printk(KERN_INFO "Success register trigger\n");
 	}
@@ -1269,12 +1276,12 @@ err_register_iio:
 	fxos8700_device_stop(client);
 err_init_device:
 	iio_trigger_unregister(pdata->trig);
-err_trigger_free:
+err_request_irq:
 	iio_trigger_free(pdata->trig);	
 erro_trigger_alloc:
-	free_irq(client->irq, pdata->trig);
-err_buffer_cleanup:
 	iio_triggered_buffer_cleanup(indio_dev);
+err_trigger_free:
+	free_irq(client->irq, pdata->trig);
 err_register_input_device:
 	i2c_set_clientdata(client,NULL);
 err_out:
@@ -1287,21 +1294,26 @@ static int fxos8700_remove(struct i2c_client *client)
 	struct iio_dev *indio_dev = i2c_get_clientdata(client);
 	struct fxos8700_data *pdata = iio_priv(indio_dev);
 	int result;
-	printk(KERN_INFO "FXOS8700: irq_count:irq_rdata:irq_fifo %d:%d:%d\n", \
-		pdata->irq_count, pdata->irq_rdata, pdata->irq_fifo);
+
 	if(!indio_dev)
 		return 0;
-
+	if(!pdata)
+		return 0;
 	iio_device_unregister(indio_dev);
-    fxos8700_device_stop(client);
+
+	fxos8700_device_stop(client);
+
+	printk(KERN_INFO "FXOS8700: irq_count:irq_rdata:irq_fifo %d:%d:%d\n", \
+	pdata->irq_count, pdata->irq_rdata, pdata->irq_fifo);
     if(client->irq)
 	{
 		if(pdata->trig)
 		{
 			
 			iio_trigger_unregister(pdata->trig);
+			printk("Unregister iio trigger success\n");	
 			iio_trigger_free(pdata->trig);
-			
+			printk("Remove iio trigger success\n");	
 		}
 		else
 		{
@@ -1309,9 +1321,10 @@ static int fxos8700_remove(struct i2c_client *client)
 		}
 		
 	}
-	kfree(pdata);
+	
 	iio_triggered_buffer_cleanup(indio_dev);
-
+	
+	kfree(pdata);
 	printk("Success to unregister iio trigger buffer device fxos8700\n");		
 	return 0;
 }
