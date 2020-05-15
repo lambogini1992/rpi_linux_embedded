@@ -163,6 +163,8 @@ struct fxos8700_data{
 	int irq_in;
 	int odr_idx;
 	int irq_count;
+	int irq_rdata;
+	int irq_fifo;
 	
 	atomic_t irq_set;
 	atomic_t acc_delay;
@@ -562,7 +564,16 @@ static irqreturn_t fxos8700_irq_handler(int irq, void *dev)
 
 	pdata->irq_count++;
 
+	ret = i2c_smbus_read_byte_data(pdata->client, FXOS8700_INT_SOURCE);
+	if(ret & 0x01)
+	{
+		pdata->irq_rdata++;
+	}
 
+	if((ret >> 6) & 0x01)
+	{
+		pdata->irq_fifo++;
+	}
 	// for(idx = 0; idx < 3; idx++)
 	// {
 	// 	type_read = FXOS8700_TYPE_ACC;
@@ -771,7 +782,8 @@ static int fxos8700_config_interrupt(struct i2c_client *client, bool state)
 	int result;
 	int value;
 
-	value = (0x01 << 6) | 0x01;
+	// value = (0x01 << 6) | 0x01;
+	value = 0x01;
 
 	if(state == true)
 	{
@@ -804,7 +816,14 @@ static int fxos8700_data_rdy_trigger_set_state(struct iio_trigger *trig, bool st
 	
 	int result;
 
-	printk(KERN_INFO "FXOS8700: Enable or disable trigger set state\n");
+	if(state == true)
+	{
+		printk(KERN_INFO "FXOS8700: Enable trigger set state\n");
+	}
+	else
+	{
+		printk(KERN_INFO "FXOS8700: Disable trigger set state\n");
+	}
 	result = fxos8700_change_mode(data->client, FXOS8700_TYPE_ACC, FXOS8700_STANDBY);
 	if(result)
 	{
@@ -1181,6 +1200,8 @@ static int  fxos8700_probe(struct i2c_client *client, \
 	printk("Success to set-up buffer trigger device fxos8700\n");
 
 	pdata->irq_count = 0;
+	pdata->irq_rdata = 0;
+	pdata->irq_fifo	 = 0;
 	/*set private data for client_i2c*/
 	i2c_set_clientdata(client,indio_dev);
 
@@ -1191,34 +1212,37 @@ static int  fxos8700_probe(struct i2c_client *client, \
 	if(client->irq > 0)
 	{
 		atomic_set(&pdata->irq_set, FXOS8700_DISABLE_IRQ);
-		result = devm_request_irq(&client->dev, client->irq, \
-			iio_trigger_generic_data_rdy_poll, IRQF_TRIGGER_RISING, \
-			"fxos8700_event", indio_dev);
+		result = devm_request_threaded_irq(dev, client->irq, \
+			iio_trigger_generic_data_rdy_poll, NULL, IRQF_TRIGGER_RISING, \
+			"fxos8700_event", pdata->trig);
 		if (result) {
-			dev_err(indio_dev->dev.parent, "unable to request IRQ\n");
-			goto err_trigger_unregister;
+			dev_err(dev, "unable to request IRQ\n");
+			goto err_buffer_cleanup;
 		}
 		printk(KERN_INFO "Success request irq\n");
-		pdata->trig = iio_trigger_alloc("%s-dev-%d", indio_dev->name, indio_dev->id);
+		pdata->trig = iio_trigger_alloc("%s-trigger-iio", indio_dev->name);
 		if (!pdata->trig) {
 			result = -ENOMEM;
-			goto err_buffer_cleanup;
+			dev_err(dev, "unable to allocate iio trigger\n");
+			goto erro_trigger_alloc;
 		}
 		printk(KERN_INFO "Success alocate iio trigger\n");
 
+		iio_trigger_set_drvdata(pdata->trig, indio_dev);
 		pdata->trig->dev.parent = &client->dev;
 		pdata->trig->ops = &fxos8700_trigger_ops;
-		iio_trigger_set_drvdata(pdata->trig, indio_dev);
+		
 		printk(KERN_INFO "Success set private data for trigger\n");
 
 		result = iio_trigger_register(pdata->trig);
 		if (result < 0) {
-			dev_err(&indio_dev->dev, "Failed to register iio trigger\n");
+			dev_err(dev, "Failed to register iio trigger\n");
 			goto err_trigger_free;
 		}
+
+		indio_dev->trig  = pdata->trig;
+
 		printk(KERN_INFO "Success register trigger\n");
-
-
 	}
 
 	printk("Success to register buffer trigger device fxos8700\n");
@@ -1244,10 +1268,11 @@ static int  fxos8700_probe(struct i2c_client *client, \
 err_register_iio:
 	fxos8700_device_stop(client);
 err_init_device:
-err_trigger_unregister:
 	iio_trigger_unregister(pdata->trig);
 err_trigger_free:
-	iio_trigger_free(pdata->trig);
+	iio_trigger_free(pdata->trig);	
+erro_trigger_alloc:
+	free_irq(client->irq, pdata->trig);
 err_buffer_cleanup:
 	iio_triggered_buffer_cleanup(indio_dev);
 err_register_input_device:
@@ -1262,7 +1287,8 @@ static int fxos8700_remove(struct i2c_client *client)
 	struct iio_dev *indio_dev = i2c_get_clientdata(client);
 	struct fxos8700_data *pdata = iio_priv(indio_dev);
 	int result;
-	printk(KERN_INFO "FXOS8700: count irq %d\n", pdata->irq_count);
+	printk(KERN_INFO "FXOS8700: irq_count:irq_rdata:irq_fifo %d:%d:%d\n", \
+		pdata->irq_count, pdata->irq_rdata, pdata->irq_fifo);
 	if(!indio_dev)
 		return 0;
 
