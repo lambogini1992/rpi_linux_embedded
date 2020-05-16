@@ -435,7 +435,6 @@ static ssize_t fxos8700_enable_show(struct device *dev,
 	return sprintf(buf, "%d\n", enable);
 }
 
-
 static ssize_t fxos8700_enable_store(struct device *dev,
 				    struct device_attribute *attr,
 				    const char *buf, size_t count)
@@ -552,46 +551,70 @@ static irqreturn_t fxos8700_irq_handler(int irq, void *dev)
 	struct iio_poll_func *pf = dev;
 	struct iio_dev *indio_dev = pf->indio_dev;
 	struct fxos8700_data *pdata = iio_priv(indio_dev);
-	int data_buff[3];
+	int data_buff[6];
+	int data_get;
 	int idx;
 	int type_read;
 	int axis;
 	int ret;
-	// s64 time_ns = iio_get_time_ns();
-	data_buff[0] = 0x11;
-	data_buff[2] = 0x33;
-	data_buff[1] = 0x22;
+	s64 time_ns = 500000;
 
+	i2c_smbus_write_byte_data(pdata->client, FXOS8700_F_SETUP, 0x3F);
+	// printk(KERN_INFO "FXOS8700: DEBUG1\n");
+	// indio_dev->scan_timestamp = time_ns;
 	pdata->irq_count++;
-
+	
 	ret = i2c_smbus_read_byte_data(pdata->client, FXOS8700_INT_SOURCE);
 	if(ret & 0x01)
 	{
+		// printk(KERN_INFO "FXOS8700: DEBUG2\n");
 		pdata->irq_rdata++;
+		for(idx = 0; idx < 3; idx++)
+		{
+			type_read = FXOS8700_TYPE_ACC;
+			axis      = fxos8700_chan_spec[idx].channel2;
+			// mutex_lock(&pdata->mutex);
+			ret = fxos8700_read_data(pdata->client, axis, type_read, &data_get);
+			if(ret)
+			{			
+				// mutex_unlock(&pdata->mutex);
+				goto err;
+			}
+			data_buff[idx] = data_get;
+			data_get = 0;
+			// mutex_unlock(&pdata->mutex);	
+		}
+		// printk(KERN_INFO "FXOS8700: DEBUG3\n");
+		for(idx = 3; idx < 6; idx++)
+		{
+			type_read = FXOS8700_TYPE_MAG;
+			axis      = fxos8700_chan_spec[idx].channel2;
+			// mutex_lock(&pdata->mutex);
+			ret = fxos8700_read_data(pdata->client, axis, type_read, &data_get);
+			if(ret)
+			{			
+				// mutex_unlock(&pdata->mutex);
+				goto err;
+			}
+			data_buff[idx] = data_get;
+			data_get = 0;
+			// mutex_unlock(&pdata->mutex);	
+		}
+		// printk(KERN_INFO "FXOS8700: DEBUG4\n");
 	}
-
+	
 	if((ret >> 6) & 0x01)
 	{
 		pdata->irq_fifo++;
 	}
-	// for(idx = 0; idx < 3; idx++)
-	// {
-	// 	type_read = FXOS8700_TYPE_ACC;
-	// 	axis      = fxos8700_chan_spec[idx].channel2;
-	// 	mutex_lock(&pdata->mutex);
-	// 	ret = fxos8700_read_data(pdata->client, axis, type_read, data_buff + idx);
-	// 	if(ret)
-	// 	{			
-	// 		mutex_unlock(&pdata->mutex);
-	// 		goto err;
-	// 	}
-	// 	mutex_unlock(&pdata->mutex);	
-	// }
 
-	iio_push_to_buffers_with_timestamp(indio_dev, data_buff, pf->timestamp);
+	i2c_smbus_write_byte_data(pdata->client, FXOS8700_F_SETUP, 0xFF);
+	// printk(KERN_INFO "FXOS8700: DEBUG6\n");
+	iio_push_to_buffers_with_timestamp(indio_dev, data_buff, time_ns);
 err:
+	// printk(KERN_INFO "FXOS8700: DEBUG7\n");
 	iio_trigger_notify_done(pdata->trig);
-	
+	// printk(KERN_INFO "FXOS8700: DEBUG8\n");
 	return IRQ_HANDLED;	
 }
 
@@ -758,8 +781,8 @@ static ssize_t fxos8700_show_mode_active(struct device *dev,\
 	int mode_active;
 	int ret;
 
-	printk(KERN_INFO "FXOS8700: irq_count:irq_rdata:irq_fifo %d:%d:%d\n", \
-	pdata->irq_count, pdata->irq_rdata, pdata->irq_fifo);
+	printk(KERN_INFO "FXOS8700: irq_count:irq_rdata:irq_fifo:scan_timestamp %d:%d:%d:%d\n", \
+	pdata->irq_count, pdata->irq_rdata, pdata->irq_fifo, indio_dev->scan_timestamp);
 	
 	mode_active = atomic_read(&pdata->acc_active);
 
@@ -786,7 +809,7 @@ static int fxos8700_config_interrupt(struct i2c_client *client, bool state)
 	int value;
 
 	// value = (0x01 << 6) | 0x01;
-	value = 0x01;
+	// value = 0x01;
 
 	if(state == true)
 	{
@@ -794,7 +817,7 @@ static int fxos8700_config_interrupt(struct i2c_client *client, bool state)
 		if (result < 0)
 			goto err;
 
-		result = i2c_smbus_write_byte_data(client, FXOS8700_CTRL_REG4, value); //data ready enable + fifo 
+		result = i2c_smbus_write_byte_data(client, FXOS8700_CTRL_REG4, 0x41); //data ready enable + fifo 
 		if (result < 0)
 			goto err;
 	}
@@ -827,6 +850,10 @@ static int fxos8700_data_rdy_trigger_set_state(struct iio_trigger *trig, bool st
 	{
 		printk(KERN_INFO "FXOS8700: Disable trigger set state\n");
 	}
+
+	if(!data)
+		goto err;
+
 	result = fxos8700_change_mode(data->client, FXOS8700_TYPE_ACC, FXOS8700_STANDBY);
 	if(result)
 	{
@@ -854,9 +881,10 @@ static int fxos8700_data_rdy_trigger_set_state(struct iio_trigger *trig, bool st
 	atomic_set(&data->irq_set, state);
 	return 0;
 err:
-	dev_err(&data->client->dev, "Fail to set-up trigger");
+	printk(KERN_INFO "FXOS8700: Fail to set-up trigger\n");
 	return result;
 }
+
 
 static int fxos8700_try_reenable(struct iio_trigger *trig)
 {
@@ -883,9 +911,9 @@ static int fxos8700_try_reenable(struct iio_trigger *trig)
 
 	return 0;
 err:
-	dev_err(&data->client->dev, "Fail to read INT_SOURCE register");
+	printk(KERN_ERR "FXOS8700: Fail to read INT_SOURCE register\n");
 out:
-	dev_err(&data->client->dev, "Fail to reset trigger");
+	printk(KERN_ERR "FXOS8700: Fail to reset trigger\n");
 	return result;
 }
 
@@ -924,7 +952,8 @@ static int fxos8700_buffer_ops_postenable(struct iio_dev *indio_dev)
 	}
 
 	/*set value for fifo trigger mode and count fifo warter mark is 26*/
-	write_config = (uint8_t)((FXOS8700_SET_FIFO_TRIGGER << 5) | (FXOS8700_SET_FIFO_COUTN_WMARK));
+	// write_config = (uint8_t)((FXOS8700_SET_FIFO_TRIGGER << 6) | (FXOS8700_SET_FIFO_COUTN_WMARK));
+	write_config = 0xff;
 	
 	/*Refer datashet must set chip to stanby mode*/
 	chip_status = atomic_read(&pdata->acc_active);
@@ -949,6 +978,25 @@ static int fxos8700_buffer_ops_postenable(struct iio_dev *indio_dev)
 out:
 	return result;	
 }
+
+// static int fxos8700_flush_fifo_ex(struct fxos8700_data *pdata)
+// {
+// 	int ret;
+
+// 	ret = fxos8700_change_mode(pdata->client, FXOS8700_TYPE_ACC, FXOS8700_STANDBY);
+// 	if(ret)
+// 	{
+// 		return -EINVAL;
+// 	}
+
+// 	ret = fxos8700_change_mode(pdata->client, FXOS8700_TYPE_ACC, FXOS8700_ACTIVED);
+// 	if(ret)
+// 	{
+// 		return -EINVAL;
+// 	}
+
+// 	return 0;
+// }
 
  /*Config Disable FIFO watermark*/ 
 static int fxos8700_buffer_ops_predisable(struct iio_dev *indio_dev)
@@ -1026,7 +1074,7 @@ static const struct iio_buffer_setup_ops fxos8700_buffer_ops =
 static const struct iio_trigger_ops fxos8700_trigger_ops = {
 	.owner 				= THIS_MODULE,
 	.set_trigger_state  = fxos8700_data_rdy_trigger_set_state,
-	.try_reenable 		= fxos8700_try_reenable,
+	// .try_reenable 		= fxos8700_try_reenable,
 };
 
 static const struct attribute_group fxos8700_attrs_group = {
@@ -1228,7 +1276,8 @@ static int  fxos8700_probe(struct i2c_client *client, \
 		printk(KERN_INFO "Success alocate iio trigger %s\n", trig->name);
 
 		result = devm_request_threaded_irq(dev, client->irq, \
-			iio_trigger_generic_data_rdy_poll, NULL, IRQF_TRIGGER_RISING, \
+			iio_trigger_generic_data_rdy_poll, NULL, \
+			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_ONESHOT, \
 			"fxos8700_event", trig);
 		if (result) {
 			dev_err(dev, "unable to request IRQ\n");
