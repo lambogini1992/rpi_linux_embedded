@@ -54,7 +54,7 @@ static bool lcd_send_cmd (struct i2c_client *client, char cmd)
     data_t[2] = data_l|0x0C;  //en=1, rs=0
     data_t[3] = data_l|0x08;  //en=0, rs=0
 
-    if(0 > i2c_master_send(client, (const char *)data_t, 4))
+    if(0 > i2c_master_send_dmasafe(client, (const char *)data_t, 4))
     {
         printk(KERN_ERR "%s failed to send command\n", __func__);
         return false;
@@ -73,7 +73,7 @@ static bool lcd_send_data (struct i2c_client *client, char data)
     data_t[1] = data_u|0x09;  //en=0, rs=0
     data_t[2] = data_l|0x0D;  //en=1, rs=0
     data_t[3] = data_l|0x09;  //en=0, rs=0
-    if(0 > i2c_master_send(client, (const char *)data_t, 4))
+    if(0 > i2c_master_send_dmasafe(client, (const char *)data_t, 4))
     {
         printk(KERN_ERR "%s failed to write data\n", __func__);
         return false;
