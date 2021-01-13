@@ -16,38 +16,22 @@
 #include "nrf24_hal.h"
 #include "nrf24_enums.h"
 
-static struct nrf24_pipe *nrf24_find_pipe_ptr(struct device *dev)
-{
-	struct nrf24_device *device = to_nrf24_device(dev->parent);
-	struct nrf24_pipe *pipe;
-
-	list_for_each_entry(pipe, &device->pipes, list)
-		if (pipe->dev == dev)
-			return pipe;
-
-	return ERR_PTR(-ENODEV);
-}
-
-static ssize_t ack_show(struct device *dev,
+static ssize_t ack_pipe0_show(struct device *dev,
 			struct device_attribute *attr,
 			char *buf)
 {
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
-	struct nrf24_pipe *pipe;
 
-	pipe = nrf24_find_pipe_ptr(dev);
-	if (IS_ERR(pipe))
-		return PTR_ERR(pipe);
 
-	ret = nrf24_get_auto_ack(device->spi, pipe->id);
+	ret = nrf24_get_auto_ack(device->spi, 0);
 	if (ret < 0)
 		return ret;
 
 	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
 }
 
-static ssize_t ack_store(struct device *dev,
+static ssize_t ack_pipe0_store(struct device *dev,
 			 struct device_attribute *attr,
 			 const char *buf,
 			 size_t count)
@@ -55,11 +39,6 @@ static ssize_t ack_store(struct device *dev,
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
 	u8 new;
-	struct nrf24_pipe *pipe;
-
-	pipe = nrf24_find_pipe_ptr(dev);
-	if (IS_ERR(pipe))
-		return PTR_ERR(pipe);
 
 	ret = kstrtou8(buf, 10, &new);
 	if (ret < 0)
@@ -67,33 +46,28 @@ static ssize_t ack_store(struct device *dev,
 	if (new < 0 || new > 1)
 		return -EINVAL;
 
-	ret = nrf24_setup_auto_ack(device->spi, pipe->id, new);
+	ret = nrf24_setup_auto_ack(device->spi, 0, new);
 	if (ret < 0)
 		return ret;
-
+	device->pipe[0].cfg.ack = new;
 	return count;
 }
 
-static ssize_t plw_show(struct device *dev,
+static ssize_t plw_pipe0_show(struct device *dev,
 			struct device_attribute *attr,
 			char *buf)
 {
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
-	struct nrf24_pipe *pipe;
 
-	pipe = nrf24_find_pipe_ptr(dev);
-	if (IS_ERR(pipe))
-		return PTR_ERR(pipe);
-
-	ret = nrf24_get_rx_pload_width(device->spi, pipe->id);
+	ret = nrf24_get_rx_pload_width(device->spi, 0);
 	if (ret < 0)
 		return ret;
 
 	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
 }
 
-static ssize_t plw_store(struct device *dev,
+static ssize_t plw_pipe0_store(struct device *dev,
 			 struct device_attribute *attr,
 			 const char *buf,
 			 size_t count)
@@ -104,31 +78,27 @@ static ssize_t plw_store(struct device *dev,
 	ssize_t old;
 	struct nrf24_pipe *pipe;
 
-	pipe = nrf24_find_pipe_ptr(dev);
-	if (IS_ERR(pipe))
-		return PTR_ERR(pipe);
-
 	ret = kstrtou8(buf, 10, &new);
 	if (ret < 0)
 		return ret;
 
 	if (new < 0 || new > PLOAD_MAX)
 		return -EINVAL;
-	old = nrf24_get_rx_pload_width(device->spi, pipe->id);
+	old = nrf24_get_rx_pload_width(device->spi, 0);
 	if (old < 0)
 		return old;
 
 	if ((u8)old != new) {
-		ret = nrf24_set_rx_pload_width(device->spi, pipe->id, new);
+		ret = nrf24_set_rx_pload_width(device->spi, 0, new);
 		if (ret < 0)
 			return ret;
-		pipe->cfg.plw = new;
+		device->pipe[0].cfg.plw = new;
 	}
 
 	return count;
 }
 
-static ssize_t address_show(struct device *dev,
+static ssize_t address_pipe0_show(struct device *dev,
 			    struct device_attribute *attr,
 			    char *buf)
 {
@@ -137,13 +107,8 @@ static ssize_t address_show(struct device *dev,
 	int ret;
 	int count;
 	int i;
-	struct nrf24_pipe *pipe;
 
-	pipe = nrf24_find_pipe_ptr(dev);
-	if (IS_ERR(pipe))
-		return PTR_ERR(pipe);
-
-	ret = nrf24_get_address(device->spi, pipe->id, addr);
+	ret = nrf24_get_address(device->spi, 0, addr);
 	if (ret < 0)
 		return ret;
 
@@ -155,7 +120,7 @@ static ssize_t address_show(struct device *dev,
 	return count;
 }
 
-static ssize_t address_store(struct device *dev,
+static ssize_t address_pipe0_store(struct device *dev,
 			     struct device_attribute *attr,
 			     const char *buf,
 			     size_t count)
@@ -177,26 +142,807 @@ static ssize_t address_store(struct device *dev,
 	if (address >= BIT_ULL(len * BITS_PER_BYTE))
 		return -EINVAL;
 
-	pipe = nrf24_find_pipe_ptr(dev);
-	if (IS_ERR(pipe))
-		return PTR_ERR(pipe);
-
-	ret = nrf24_set_address(device->spi, pipe->id, (u8 *)&address);
+	ret = nrf24_set_address(device->spi, 0, (u8 *)&address);
 	if (ret < 0)
 		return ret;
+	
+	device->pipe[0].cfg.address = address;
 
 	return count;
 }
 
-static DEVICE_ATTR_RW(ack);
-static DEVICE_ATTR_RW(plw);
-static DEVICE_ATTR_RW(address);
+static DEVICE_ATTR_RW(ack_pipe0);
+static DEVICE_ATTR_RW(plw_pipe0);
+static DEVICE_ATTR_RW(address_pipe0);
 
-struct attribute *nrf24_pipe_attrs[] = {
-	&dev_attr_ack.attr,
-	&dev_attr_plw.attr,
-	&dev_attr_address.attr,
+struct attribute *nrf24_pipe0_attrs[] = {
+	&dev_attr_ack_pipe0.attr,
+	&dev_attr_plw_pipe0.attr,
+	&dev_attr_address_pipe0.attr,
 	NULL,
+};
+
+static ssize_t ack_pipe1_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	struct nrf24_pipe *pipe;
+
+
+	ret = nrf24_get_auto_ack(device->spi, 1);
+	if (ret < 0)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
+}
+
+static ssize_t ack_pipe1_store(struct device *dev,
+			 struct device_attribute *attr,
+			 const char *buf,
+			 size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	u8 new;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtou8(buf, 10, &new);
+	if (ret < 0)
+		return ret;
+	if (new < 0 || new > 1)
+		return -EINVAL;
+
+	ret = nrf24_setup_auto_ack(device->spi, 1, new);
+	if (ret < 0)
+		return ret;
+
+    device->pipe[1].cfg.ack = new;
+
+	return count;
+}
+
+static ssize_t plw_pipe1_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	struct nrf24_pipe *pipe;
+
+	ret = nrf24_get_rx_pload_width(device->spi, 1);
+	if (ret < 0)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
+}
+
+static ssize_t plw_pipe1_store(struct device *dev,
+			 struct device_attribute *attr,
+			 const char *buf,
+			 size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	u8 new;
+	ssize_t old;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtou8(buf, 10, &new);
+	if (ret < 0)
+		return ret;
+
+	if (new < 0 || new > PLOAD_MAX)
+		return -EINVAL;
+	old = nrf24_get_rx_pload_width(device->spi, 1);
+	if (old < 0)
+		return old;
+
+	if ((u8)old != new) {
+		ret = nrf24_set_rx_pload_width(device->spi, 1, new);
+		if (ret < 0)
+			return ret;
+        device->pipe[1].cfg.plw = new;
+	}
+
+	return count;
+}
+
+static ssize_t address_pipe1_show(struct device *dev,
+			    struct device_attribute *attr,
+			    char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	u8 addr[16];
+	int ret;
+	int count;
+	int i;
+	struct nrf24_pipe *pipe;
+
+	ret = nrf24_get_address(device->spi, 1, addr);
+	if (ret < 0)
+		return ret;
+
+	count = scnprintf(buf, PAGE_SIZE, "0x");
+	for (i = --ret; i >= 0; i--)
+		count += scnprintf(buf + count, PAGE_SIZE - count, "%02X", addr[i]);
+	count += scnprintf(buf + count, PAGE_SIZE - count, "\n");
+
+	return count;
+}
+
+static ssize_t address_pipe1_store(struct device *dev,
+			     struct device_attribute *attr,
+			     const char *buf,
+			     size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	u64 address;
+	int len;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtoull(buf, 16, &address);
+	if (ret < 0)
+		return ret;
+
+	len = nrf24_get_address_width(device->spi);
+	if (len < 0)
+		return len;
+
+	if (address >= BIT_ULL(len * BITS_PER_BYTE))
+		return -EINVAL;
+
+	ret = nrf24_set_address(device->spi, 1, (u8 *)&address);
+	if (ret < 0)
+		return ret;
+
+    device->pipe[1].cfg.address = address;
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(ack_pipe1);
+static DEVICE_ATTR_RW(plw_pipe1);
+static DEVICE_ATTR_RW(address_pipe1);
+
+struct attribute *nrf24_pipe1_attrs[] = {
+	&dev_attr_ack_pipe1.attr,
+	&dev_attr_plw_pipe1.attr,
+	&dev_attr_address_pipe1.attr,
+	NULL,
+};
+
+static ssize_t ack_pipe2_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	struct nrf24_pipe *pipe;
+
+
+	ret = nrf24_get_auto_ack(device->spi, 2);
+	if (ret < 0)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
+}
+
+static ssize_t ack_pipe2_store(struct device *dev,
+			 struct device_attribute *attr,
+			 const char *buf,
+			 size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	u8 new;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtou8(buf, 10, &new);
+	if (ret < 0)
+		return ret;
+	if (new < 0 || new > 1)
+		return -EINVAL;
+
+	ret = nrf24_setup_auto_ack(device->spi, 2, new);
+	if (ret < 0)
+		return ret;
+	
+	device->pipe[1].cfg.ack = new;
+
+	return count;
+}
+
+static ssize_t plw_pipe2_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	struct nrf24_pipe *pipe;
+
+	ret = nrf24_get_rx_pload_width(device->spi, 2);
+	if (ret < 0)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
+}
+
+static ssize_t plw_pipe2_store(struct device *dev,
+			 struct device_attribute *attr,
+			 const char *buf,
+			 size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	u8 new;
+	ssize_t old;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtou8(buf, 10, &new);
+	if (ret < 0)
+		return ret;
+
+	if (new < 0 || new > PLOAD_MAX)
+		return -EINVAL;
+	old = nrf24_get_rx_pload_width(device->spi, 2);
+	if (old < 0)
+		return old;
+
+	if ((u8)old != new) {
+		ret = nrf24_set_rx_pload_width(device->spi, 2, new);
+		if (ret < 0)
+			return ret;
+		device->pipe[2].cfg.plw = new;
+	}
+
+	return count;
+}
+
+static ssize_t address_pipe2_show(struct device *dev,
+			    struct device_attribute *attr,
+			    char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	u8 addr[16];
+	int ret;
+	int count;
+	int i;
+	struct nrf24_pipe *pipe;
+
+	ret = nrf24_get_address(device->spi, 2, addr);
+	if (ret < 0)
+		return ret;
+
+	count = scnprintf(buf, PAGE_SIZE, "0x");
+	for (i = --ret; i >= 0; i--)
+		count += scnprintf(buf + count, PAGE_SIZE - count, "%02X", addr[i]);
+	count += scnprintf(buf + count, PAGE_SIZE - count, "\n");
+
+	return count;
+}
+
+static ssize_t address_pipe2_store(struct device *dev,
+			     struct device_attribute *attr,
+			     const char *buf,
+			     size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	u64 address;
+	int len;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtoull(buf, 16, &address);
+	if (ret < 0)
+		return ret;
+
+	len = nrf24_get_address_width(device->spi);
+	if (len < 0)
+		return len;
+
+	if (address >= BIT_ULL(len * BITS_PER_BYTE))
+		return -EINVAL;
+
+	ret = nrf24_set_address(device->spi, 2, (u8 *)&address);
+	if (ret < 0)
+		return ret;
+	device->pipe[2].cfg.address = address;
+	return count;
+}
+
+static DEVICE_ATTR_RW(ack_pipe2);
+static DEVICE_ATTR_RW(plw_pipe2);
+static DEVICE_ATTR_RW(address_pipe2);
+
+struct attribute *nrf24_pipe2_attrs[] = {
+	&dev_attr_ack_pipe2.attr,
+	&dev_attr_plw_pipe2.attr,
+	&dev_attr_address_pipe2.attr,
+	NULL,
+};
+
+static ssize_t ack_pipe3_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	struct nrf24_pipe *pipe;
+
+
+	ret = nrf24_get_auto_ack(device->spi, 3);
+	if (ret < 0)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
+}
+
+static ssize_t ack_pipe3_store(struct device *dev,
+			 struct device_attribute *attr,
+			 const char *buf,
+			 size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	u8 new;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtou8(buf, 10, &new);
+	if (ret < 0)
+		return ret;
+	if (new < 0 || new > 1)
+		return -EINVAL;
+
+	ret = nrf24_setup_auto_ack(device->spi, 3, new);
+	if (ret < 0)
+		return ret;
+    device->pipe[3].cfg.ack = new;
+	return count;
+}
+
+static ssize_t plw_pipe3_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	struct nrf24_pipe *pipe;
+
+	ret = nrf24_get_rx_pload_width(device->spi, 3);
+	if (ret < 0)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
+}
+
+static ssize_t plw_pipe3_store(struct device *dev,
+			 struct device_attribute *attr,
+			 const char *buf,
+			 size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	u8 new;
+	ssize_t old;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtou8(buf, 10, &new);
+	if (ret < 0)
+		return ret;
+
+	if (new < 0 || new > PLOAD_MAX)
+		return -EINVAL;
+	old = nrf24_get_rx_pload_width(device->spi, 3);
+	if (old < 0)
+		return old;
+
+	if ((u8)old != new) {
+		ret = nrf24_set_rx_pload_width(device->spi, 3, new);
+		if (ret < 0)
+			return ret;
+		device->pipe[3].cfg.plw = new;
+	}
+	return count;
+}
+
+static ssize_t address_pipe3_show(struct device *dev,
+			    struct device_attribute *attr,
+			    char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	u8 addr[16];
+	int ret;
+	int count;
+	int i;
+	struct nrf24_pipe *pipe;
+
+	ret = nrf24_get_address(device->spi, 3, addr);
+	if (ret < 0)
+		return ret;
+
+	count = scnprintf(buf, PAGE_SIZE, "0x");
+	for (i = --ret; i >= 0; i--)
+		count += scnprintf(buf + count, PAGE_SIZE - count, "%02X", addr[i]);
+	count += scnprintf(buf + count, PAGE_SIZE - count, "\n");
+
+	return count;
+}
+
+static ssize_t address_pipe3_store(struct device *dev,
+			     struct device_attribute *attr,
+			     const char *buf,
+			     size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	u64 address;
+	int len;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtoull(buf, 16, &address);
+	if (ret < 0)
+		return ret;
+
+	len = nrf24_get_address_width(device->spi);
+	if (len < 0)
+		return len;
+
+	if (address >= BIT_ULL(len * BITS_PER_BYTE))
+		return -EINVAL;
+
+	ret = nrf24_set_address(device->spi, 3, (u8 *)&address);
+	if (ret < 0)
+		return ret;
+
+    device->pipe[3].cfg.address = address;
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(ack_pipe3);
+static DEVICE_ATTR_RW(plw_pipe3);
+static DEVICE_ATTR_RW(address_pipe3);
+
+struct attribute *nrf24_pipe3_attrs[] = {
+	&dev_attr_ack_pipe3.attr,
+	&dev_attr_plw_pipe3.attr,
+	&dev_attr_address_pipe3.attr,
+	NULL,
+};
+
+static ssize_t ack_pipe4_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	struct nrf24_pipe *pipe;
+
+
+	ret = nrf24_get_auto_ack(device->spi, 4);
+	if (ret < 0)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
+}
+
+static ssize_t ack_pipe4_store(struct device *dev,
+			 struct device_attribute *attr,
+			 const char *buf,
+			 size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	u8 new;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtou8(buf, 10, &new);
+	if (ret < 0)
+		return ret;
+	if (new < 0 || new > 1)
+		return -EINVAL;
+
+	ret = nrf24_setup_auto_ack(device->spi, 4, new);
+	if (ret < 0)
+		return ret;
+
+	device->pipe[4].cfg.ack = new;
+
+	return count;
+}
+
+static ssize_t plw_pipe4_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	struct nrf24_pipe *pipe;
+
+	ret = nrf24_get_rx_pload_width(device->spi, 4);
+	if (ret < 0)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
+}
+
+static ssize_t plw_pipe4_store(struct device *dev,
+			 struct device_attribute *attr,
+			 const char *buf,
+			 size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	u8 new;
+	ssize_t old;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtou8(buf, 10, &new);
+	if (ret < 0)
+		return ret;
+
+	if (new < 0 || new > PLOAD_MAX)
+		return -EINVAL;
+	old = nrf24_get_rx_pload_width(device->spi, 4);
+	if (old < 0)
+		return old;
+
+	if ((u8)old != new) {
+		ret = nrf24_set_rx_pload_width(device->spi, 4, new);
+		if (ret < 0)
+			return ret;
+		device->pipe[4].cfg.plw = new;
+	}
+
+	return count;
+}
+
+static ssize_t address_pipe4_show(struct device *dev,
+			    struct device_attribute *attr,
+			    char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	u8 addr[16];
+	int ret;
+	int count;
+	int i;
+	struct nrf24_pipe *pipe;
+
+	ret = nrf24_get_address(device->spi, 4, addr);
+	if (ret < 0)
+		return ret;
+
+	count = scnprintf(buf, PAGE_SIZE, "0x");
+	for (i = --ret; i >= 0; i--)
+		count += scnprintf(buf + count, PAGE_SIZE - count, "%02X", addr[i]);
+	count += scnprintf(buf + count, PAGE_SIZE - count, "\n");
+
+	return count;
+}
+
+static ssize_t address_pipe4_store(struct device *dev,
+			     struct device_attribute *attr,
+			     const char *buf,
+			     size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	u64 address;
+	int len;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtoull(buf, 16, &address);
+	if (ret < 0)
+		return ret;
+
+	len = nrf24_get_address_width(device->spi);
+	if (len < 0)
+		return len;
+
+	if (address >= BIT_ULL(len * BITS_PER_BYTE))
+		return -EINVAL;
+
+	ret = nrf24_set_address(device->spi, 4, (u8 *)&address);
+	if (ret < 0)
+		return ret;
+	
+	device->pipe[4].cfg.address = address;
+	
+	return count;
+}
+
+static DEVICE_ATTR_RW(ack_pipe4);
+static DEVICE_ATTR_RW(plw_pipe4);
+static DEVICE_ATTR_RW(address_pipe4);
+
+struct attribute *nrf24_pipe4_attrs[] = {
+	&dev_attr_ack_pipe4.attr,
+	&dev_attr_plw_pipe4.attr,
+	&dev_attr_address_pipe4.attr,
+	NULL,
+};
+
+static ssize_t ack_pipe5_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	struct nrf24_pipe *pipe;
+
+
+	ret = nrf24_get_auto_ack(device->spi, 5);
+	if (ret < 0)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
+}
+
+static ssize_t ack_pipe5_store(struct device *dev,
+			 struct device_attribute *attr,
+			 const char *buf,
+			 size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	uint8_t new;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtouint8_t(buf, 10, &new);
+	if (ret < 0)
+		return ret;
+	if (new < 0 || new > 1)
+		return -EINVAL;
+
+	ret = nrf24_setup_auto_ack(device->spi, 5, new);
+	if (ret < 0)
+		return ret;
+	device->pipe[5].cfg.ack = new;
+	return count;
+}
+
+static ssize_t plw_pipe5_show(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	struct nrf24_pipe *pipe;
+
+	ret = nrf24_get_rx_pload_width(device->spi, 5);
+	if (ret < 0)
+		return ret;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", ret);
+}
+
+static ssize_t plw_pipe5_store(struct device *dev,
+			 struct device_attribute *attr,
+			 const char *buf,
+			 size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	uint8_t new;
+	ssize_t old;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtouint8_t(buf, 10, &new);
+	if (ret < 0)
+		return ret;
+
+	if (new < 0 || new > PLOAD_MAX)
+		return -EINVAL;
+	old = nrf24_get_rx_pload_width(device->spi, 5);
+	if (old < 0)
+		return old;
+
+	if ((uint8_t)old != new) {
+		ret = nrf24_set_rx_pload_width(device->spi, 5, new);
+		if (ret < 0)
+			return ret;
+		device->pipe[5].cfg.plw = new;
+	}
+
+	return count;
+}
+
+static ssize_t address_pipe5_show(struct device *dev,
+			    struct device_attribute *attr,
+			    char *buf)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	uint8_t addr[16];
+	int ret;
+	int count;
+	int i;
+	struct nrf24_pipe *pipe;
+
+	ret = nrf24_get_address(device->spi, 5, addr);
+	if (ret < 0)
+		return ret;
+
+	count = scnprintf(buf, PAGE_SIZE, "0x");
+	for (i = --ret; i >= 0; i--)
+		count += scnprintf(buf + count, PAGE_SIZE - count, "%02X", addr[i]);
+	count += scnprintf(buf + count, PAGE_SIZE - count, "\n");
+
+	return count;
+}
+
+static ssize_t address_pipe5_store(struct device *dev,
+			     struct device_attribute *attr,
+			     const char *buf,
+			     size_t count)
+{
+	struct nrf24_device *device = to_nrf24_device(dev->parent);
+	int ret;
+	u64 address;
+	int len;
+	struct nrf24_pipe *pipe;
+
+	ret = kstrtoull(buf, 16, &address);
+	if (ret < 0)
+		return ret;
+
+	len = nrf24_get_address_width(device->spi);
+	if (len < 0)
+		return len;
+
+	if (address >= BIT_ULL(len * BITS_PER_BYTE))
+		return -EINVAL;
+
+	ret = nrf24_set_address(device->spi, 5, (uint8_t *)&address);
+	if (ret < 0)
+		return ret;
+
+	device->pipe[5].cfg.address = address;
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(ack_pipe5);
+static DEVICE_ATTR_RW(plw_pipe5);
+static DEVICE_ATTR_RW(address_pipe5);
+
+struct attribute *nrf24_pipe5_attrs[] = {
+	&dev_attr_ack_pipe5.attr,
+	&dev_attr_plw_pipe5.attr,
+	&dev_attr_address_pipe5.attr,
+	NULL,
+};
+
+struct attribute_group nrf24_pipe0_group = {
+	.attrs = nrf24_pipe0_attrs,
+	.name = "nrf24_pipe0"
+};
+
+struct attribute_group nrf24_pipe1_group = {
+	.attrs = nrf24_pipe1_attrs,
+	.name = "nrf24_pipe1"
+};
+
+struct attribute_group nrf24_pipe2_group = {
+	.attrs = nrf24_pipe2_attrs,
+	.name = "nrf24_pipe2"
+};
+
+struct attribute_group nrf24_pipe3_group = {
+	.attrs = nrf24_pipe3_attrs,
+	.name = "nrf24_pipe3"
+};
+
+struct attribute_group nrf24_pipe4_group = {
+	.attrs = nrf24_pipe4_attrs,
+	.name = "nrf24_pipe4"
+};
+
+struct attribute_group nrf24_pipe5_group = {
+	.attrs = nrf24_pipe5_attrs,
+	.name = "nrf24_pipe5"
 };
 
 static ssize_t tx_address_show(struct device *dev,
@@ -705,3 +1451,20 @@ struct attribute *nrf24_attrs[] = {
 	NULL,
 };
 
+
+const struct attribute_group nrf24_dev_general =
+{
+	.attrs = nrf24_attrs,
+	name   = "nrf24_general"
+};
+
+const struct attribute_group* nrf_24_device_attr_group[] = {
+	&nrf24_dev_general,
+	&nrf24_pipe0_group,
+	&nrf24_pipe1_group,
+	&nrf24_pipe2_group,
+	&nrf24_pipe3_group,
+	&nrf24_pipe4_group,
+	&nrf24_pipe5_group,
+	NULL
+};

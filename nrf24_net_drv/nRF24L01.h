@@ -77,6 +77,7 @@
 #define EN_ACK_PAY		0x02
 #define EN_DYN_ACK		0x01
 
-#define PLOAD_MAX		32
+#define PLOAD_MAX		            (40)
+#define PAYLOAD_DATA_PACKET_POS     (8)
 
 #endif

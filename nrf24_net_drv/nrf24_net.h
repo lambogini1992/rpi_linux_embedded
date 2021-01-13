@@ -5,9 +5,11 @@
 
 #define FIFO_SIZE			65536
 #define SKB_BUFFER_SIZE     1024
-
+#define NRF24L1_MSG_DEFAULT	\
+	(NETIF_MSG_PROBE | NETIF_MSG_IFUP | NETIF_MSG_IFDOWN | NETIF_MSG_LINK)
+	
 typedef struct nrf24_pipe_cfg {
-	uint8_t			address[5];
+	uint64_t		address;
 	uint8_t			ack;
 	ssize_t			plw;
 };
@@ -30,41 +32,46 @@ struct nrf24_device_cfg {
 };
 
 struct nrf24_tx_data {
-	struct nrf24_pipe	pipe[6];
 	uint8_t			    size;
 	uint8_t			    pload[PLOAD_MAX];
 };
 
 struct nrf24_device {
-    struct net_device *net_dev;
-    struct skb_buff   *rx_buff;
-    struct skb_buff   *tx_buff;
+	dev_t					dev_num;
+	struct class			*dev_class;
+	struct device			dev;
+	
+    struct net_device 		*net_dev;
+    struct skb_buff   		*rx_buff;
+    struct skb_buff   		*tx_buff;
     
-	struct device		dev;
-	struct spi_device	*spi;
+	
+	struct spi_device		*spi;
 
-	struct gpio_desc	*ce; // control ce pin
+	struct gpio_desc		*ce; // control ce pin
 
 	struct nrf24_device_cfg	cfg; // config device
 
+	struct nrf24_pipe	pipe[6]; //pipe data
 	/* for irqsave */
-	spinlock_t		    lock;
+	spinlock_t		    	lock;
 
-	struct work_struct	isr_work;//work struct for interrupt
-	struct work_struct	rx_work;//work struct when receive packet from module
-    struct work_struct  tx_work;// work struct when receive new packet when to transmit
+	struct work_struct		isr_work;//work struct for interrupt
+	struct work_struct		rx_work;//work struct when receive packet from module
+    struct work_struct  	tx_work;// work struct when receive new packet when to transmit
 
 	/* tx */
-	struct mutex		tx_skb_mutex;//because, we will create tx thread 
-	wait_queue_head_t	tx_wait_queue;//help to make start change module to TX
-	wait_queue_head_t	tx_done_wait_queue;// help to know module transmit packet finish
-	atomic_t			tx_done; 
-	atomic_t			tx_failed;
+	struct mutex			tx_skb_mutex;//because, we will create tx thread 
+	wait_queue_head_t		tx_wait_queue;//help to make start change module to TX
+	wait_queue_head_t		tx_done_wait_queue;// help to know module transmit packet finish
+	atomic_t				tx_done; 
+	atomic_t				tx_failed;
 
-	/* rx */
-	struct timer_list	rx_active_timer;// time to run module in RX mode
-	atomic_t			rx_active; //the flag help to know system is active
+	/* rx */	
+	struct timer_list		rx_active_timer;// time to run module in RX mode
+	atomic_t				rx_active; //the flag help to know system is active
 
+	uint32_t 				msg_enable;
 };
 
 #define to_nrf24_device(device)	container_of(device, struct nrf24_device, dev)
