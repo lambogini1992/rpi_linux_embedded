@@ -61,7 +61,7 @@ struct nrf24_device {
     struct work_struct  	tx_work;// work struct when receive new packet when to transmit
 
 	/* tx */
-	struct mutex			tx_skb_mutex;//because, we will create tx thread 
+	struct mutex			tx_fifo_mutex;//because, we will create tx thread 
 	wait_queue_head_t		tx_wait_queue;//help to make start change module to TX
 	wait_queue_head_t		tx_done_wait_queue;// help to know module transmit packet finish
 	atomic_t				tx_done; 
@@ -72,6 +72,8 @@ struct nrf24_device {
 	atomic_t				rx_active; //the flag help to know system is active
 
 	uint32_t 				msg_enable;
+
+	STRUCT_KFIFO_REC_1(FIFO_SIZE) tx_fifo;
 };
 
 #define to_nrf24_device(device)	container_of(device, struct nrf24_device, dev)

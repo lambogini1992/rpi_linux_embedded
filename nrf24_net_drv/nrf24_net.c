@@ -19,6 +19,7 @@
 #include <linux/timer.h>
 #include <linux/skbuff.h>
 #include <linux/netdevice.h>
+#include <linux/etherdevice.h>
 
 
 #include "nrf24_net.h"
@@ -45,6 +46,136 @@ static void nrf24_ce_lo(struct nrf24_device *device)
 	gpiod_set_value(device->ce, 0);
 }
 
+static int nrf24_hal_init(struct nrf24_device *device)
+{
+	int ret;
+	struct spi_device *spi = device->spi;
+	struct nrf24_pipe *pipe;
+	uint8_t count_idx;
+	
+	nrf24_ce_lo(device);
+	ret = nrf24_soft_reset(spi);
+	if (ret < 0)
+		return ret;
+
+	for(count_idx = 0; count_idx < 6; count_idx++)
+	{
+		device->pipe[count_idx].cfg.plw = 0;
+		ret = nrf24_set_rx_pload_width(spi, pipe->id, 0);
+		if (ret < 0)
+			return ret;
+	}
+
+	ret = nrf24_flush_fifo(spi);
+	if (ret < 0)
+		return ret;
+
+	ret = nrf24_open_pipe(spi, NRF24_PIPE_ALL);
+	if (ret < 0)
+		return ret;
+
+	ret = nrf24_lock_unlock(spi);
+	if (ret < 0)
+		return ret;
+
+	ret = nrf24_set_mode(spi, NRF24_MODE_RX);
+	if (ret < 0)
+		return ret;
+
+	device->cfg.crc = NRF24_CRC_16BIT;
+	ret = nrf24_set_crc_mode(spi, NRF24_CRC_16BIT);
+	if (ret < 0)
+		return ret;
+
+	device->cfg.retr_count = 15;
+	ret = nrf24_set_auto_retr_count(spi, 15);
+	if (ret < 0)
+		return ret;
+
+	device->cfg.retr_delay = 4000;
+	ret = nrf24_set_auto_retr_delay(spi, 4000);
+	if (ret < 0)
+		return ret;
+
+	device->cfg.rf_power = NRF24_POWER_0DBM;
+	ret = nrf24_set_rf_power(spi, NRF24_POWER_0DBM);
+	if (ret < 0)
+		return ret;
+
+	device->cfg.data_rate = NRF24_DATARATE_2MBPS;
+	ret = nrf24_set_datarate(spi, NRF24_DATARATE_2MBPS);
+	if (ret < 0)
+		return ret;
+
+	ret = nrf24_get_address_width(spi);
+	if (ret < 0)
+		return ret;
+
+	device->cfg.address_width = ret;
+
+	ret = nrf24_power_up(spi);
+	if (ret < 0)
+		return ret;
+
+	nrf24_ce_hi(device);
+
+	return ret;
+}
+/*************************************************/
+
+static int nrf24l01_net_open(struct net_device *dev)
+{
+	struct nrf24_device *priv = netdev_priv(dev);
+
+	printk(KERN_INFO "%s", __func__);
+
+	if (!is_valid_ether_addr(dev->dev_addr)) {
+		if (netif_msg_ifup(priv))
+			netdev_err(dev, "invalid MAC address %pM\n", dev->dev_addr);
+		return -EADDRNOTAVAIL;
+	}
+
+	nrf24_hal_init(priv);
+	netif_start_queue(dev);
+
+	return 0;
+}
+
+static int nrf24l01_net_release(struct net_device *dev) {
+    printk(KERN_INFO "%s", __func__);
+    netif_stop_queue(dev);
+    return 0;
+}
+
+static netdev_tx_t nrf24l01_send_packet(struct sk_buff *skb,
+					struct net_device *dev)
+{
+	struct nrf24_device *priv = netdev_priv(dev);
+	printk(KERN_INFO "%s", __func__);
+	/* If some error occurs while trying to transmit this
+	 * packet, you should return '1' from this function.
+	 * In such a case you _may not_ do anything to the
+	 * SKB, it is still owned by the network queueing
+	 * layer when an error is returned. This means you
+	 * may not modify any SKB fields, you may not free
+	 * the SKB, etc.
+	 */
+	netif_stop_queue(dev);
+
+	/* Remember the skb for deferred processing */
+	priv->tx_skb = skb;
+	schedule_work(&priv->tx_work);
+
+	return NETDEV_TX_OK;
+}
+
+static const struct net_device_ops nrf24l01_netdev_ops = {
+	.ndo_open		= nrf24l01_net_open,
+	.ndo_stop       = nrf24l01_net_release,
+	.ndo_start_xmit		= nrf24l01_send_packet,
+	.ndo_validate_addr	= eth_validate_addr,
+};
+/*************************************************/
 static void nrf24_rx_active_timer_cb(struct timer_list *t)
 {
 	struct nrf24_device *device = from_timer(device, t, rx_active_timer);
@@ -58,6 +189,7 @@ static void nrf24_rx_active_timer_cb(struct timer_list *t)
 		wake_up_interruptible(&device->tx_wait_queue);
 	}
 }
+
 static void nrf24_rx_handle_data(struct nrf24_device *device)
 {
 	struct nrf24_device *device;
@@ -69,8 +201,10 @@ static void nrf24_rx_handle_data(struct nrf24_device *device)
 	uint8_t pipe_idx;
 	struct sk_buff *skb;
 
+	printk(KERN_INFO "%s", __func__);
 	ndev = device->net_dev;
 
+	/*Get Index pipe have data in device fifo*/ 
 	pipe_idx = nrf24_get_rx_data_source(device->spi);
 	if((pipe_idx < 0) && (pipe_idx > NRF24_PIPE5))
 	{
@@ -81,6 +215,7 @@ static void nrf24_rx_handle_data(struct nrf24_device *device)
 	}
 
 	memset(pload, 0, PLOAD_MAX);
+	/*Put address of pipe index into data buffer*/
 	memcpy(pload, &(device->pipe[pipe_idx].address), sizeof(uint64_t));
 	length = nrf24_read_rx_pload(device->spi, pload + PAYLOAD_DATA_PACKET_POS);
 	if (length < 0 || length > PLOAD_MAX) 
@@ -103,6 +238,8 @@ static void nrf24_rx_handle_data(struct nrf24_device *device)
 	}
 
 	skb_reserve(skb, NET_IP_ALIGN);
+
+	/*Add data of FIFO into socket*/ 
 	memcpy(skb_put(sbk, length), pload, length);
 	/* update statistics */
 	ndev->stats.rx_packets++;
@@ -114,16 +251,56 @@ static void nrf24_rx_handle_data(struct nrf24_device *device)
 static void nrf24_rx_work_handler(struct work_struct *work)
 {
 	struct nrf24_device *device;
-
+	printk(KERN_INFO "%s", __func__);
 	device = container_of(work, struct nrf24_device, rx_work);
 	if(!device)
 	{
 		return;
 	}
+	/*Check FIFO data is empty or not*/ 
 	while (!nrf24_is_rx_fifo_empty(device->spi)) 
 	{
 		nrf24_rx_handle_data(device);	
 	}
+}
+
+static void nrf24_tx_work_handler(struct work_struct *work)
+{
+	struct nrf24_device *device;
+	printk(KERN_INFO "%s", __func__);
+	device = container_of(work, struct nrf24_device, rx_work);
+	if(!device)
+	{
+		return;
+	}
+
+	/*Check length of socket data is over than MAX of playload size or not*/
+	if((device->skb->len) > PLOAD_MAX)
+	{
+		goto invalid_len;
+	}
+
+	/*Lock TX FIFO mutex*/
+	if (mutex_lock_interruptible(&device->tx_fifo_mutex))
+	{
+		goto exit_lock;
+	}
+
+	/*Put Socket data in to tx fifo*/ 
+	if (kfifo_in(&device->tx_fifo, device->skb->data, device->skb->len) != device->skb->len)
+	{
+		goto exit_kfifo;
+	}
+
+exit_kfifo:
+	/*Unlock tx fifo mutex*/
+	mutex_unlock(&device->tx_fifo_mutex);
+exit_lock:
+	/*Trigger for TX thread run to transmit data*/
+	wake_up_interruptible(&device->tx_wait_queue);
+invalid_len:
+	dev_kfree_skb(device->tx_skb);
+	device->tx_skb = NULL;
 }
 
 static void nrf24_isr_work_handler(struct work_struct *work)
@@ -134,6 +311,7 @@ static void nrf24_isr_work_handler(struct work_struct *work)
 
 	device = container_of(work, struct nrf24_device, isr_work);
 
+	/*Get information of interrupt form status register*/ 
 	status = nrf24_get_status(device->spi);
 	if (status < 0)
 		return;
@@ -226,8 +404,9 @@ static struct nrf24_device *nrf24_network_init(struct spi_device *spi)
 	INIT_WORK(&device->isr_work, nrf24_isr_work_handler);
 	INIT_WORK(&device->rx_work, nrf24_rx_work_handler);
 	INIT_WORK(&device->tx_work, nrf24_tx_work_handler);
+	INIT_KFIFO(device->tx_fifo);
 	spin_lock_init(&device->lock);
-	mutex_init(&device->tx_skb_mutex);
+	mutex_init(&device->tx_fifo);
 
 	device->tx_done 		= ATOMIC_INIT(0);
 	device->tx_failed 		= ATOMIC_INIT(0);
@@ -263,8 +442,6 @@ static int nrf24_gpio_setup(struct nrf24_device *device)
 		return ret;
 	}
 
-	nrf24_ce_lo(device);
-
 	ret = request_irq(device->spi->irq,
 			  nrf24_isr,
 			  0,
@@ -276,81 +453,6 @@ static int nrf24_gpio_setup(struct nrf24_device *device)
 	}
 
 	return 0;
-}
-
-static int nrf24_hal_init(struct nrf24_device *device)
-{
-	int ret;
-	struct spi_device *spi = device->spi;
-	struct nrf24_pipe *pipe;
-	uint8_t count_idx;
-
-	ret = nrf24_soft_reset(spi);
-	if (ret < 0)
-		return ret;
-
-	for(count_idx = 0; count_idx < 6; count_idx++)
-	{
-		device->pipe[count_idx].cfg.plw = 0;
-		ret = nrf24_set_rx_pload_width(spi, pipe->id, 0);
-		if (ret < 0)
-			return ret;
-	}
-
-	ret = nrf24_flush_fifo(spi);
-	if (ret < 0)
-		return ret;
-
-	ret = nrf24_open_pipe(spi, NRF24_PIPE_ALL);
-	if (ret < 0)
-		return ret;
-
-	ret = nrf24_lock_unlock(spi);
-	if (ret < 0)
-		return ret;
-
-	ret = nrf24_set_mode(spi, NRF24_MODE_RX);
-	if (ret < 0)
-		return ret;
-
-	device->cfg.crc = NRF24_CRC_16BIT;
-	ret = nrf24_set_crc_mode(spi, NRF24_CRC_16BIT);
-	if (ret < 0)
-		return ret;
-
-	device->cfg.retr_count = 15;
-	ret = nrf24_set_auto_retr_count(spi, 15);
-	if (ret < 0)
-		return ret;
-
-	device->cfg.retr_delay = 4000;
-	ret = nrf24_set_auto_retr_delay(spi, 4000);
-	if (ret < 0)
-		return ret;
-
-	device->cfg.rf_power = NRF24_POWER_0DBM;
-	ret = nrf24_set_rf_power(spi, NRF24_POWER_0DBM);
-	if (ret < 0)
-		return ret;
-
-	device->cfg.data_rate = NRF24_DATARATE_2MBPS;
-	ret = nrf24_set_datarate(spi, NRF24_DATARATE_2MBPS);
-	if (ret < 0)
-		return ret;
-
-	ret = nrf24_get_address_width(spi);
-	if (ret < 0)
-		return ret;
-
-	device->cfg.address_width = ret;
-
-	ret = nrf24_power_up(spi);
-	if (ret < 0)
-		return ret;
-
-	nrf24_ce_hi(device);
-
-	return ret;
 }
 
 static int nrf24_probe(struct spi_device *spi)
