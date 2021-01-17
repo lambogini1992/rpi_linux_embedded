@@ -12,7 +12,7 @@
 #include <linux/kfifo.h>
 #include <linux/list.h>
 
-#include "nrf24_if.h"
+#include "nrf24_net.h"
 #include "nrf24_hal.h"
 #include "nrf24_enums.h"
 
@@ -76,7 +76,6 @@ static ssize_t plw_pipe0_store(struct device *dev,
 	int ret;
 	u8 new;
 	ssize_t old;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtou8(buf, 10, &new);
 	if (ret < 0)
@@ -129,7 +128,6 @@ static ssize_t address_pipe0_store(struct device *dev,
 	int ret;
 	u64 address;
 	int len;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtoull(buf, 16, &address);
 	if (ret < 0)
@@ -168,7 +166,6 @@ static ssize_t ack_pipe1_show(struct device *dev,
 {
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
-	struct nrf24_pipe *pipe;
 
 
 	ret = nrf24_get_auto_ack(device->spi, 1);
@@ -186,7 +183,6 @@ static ssize_t ack_pipe1_store(struct device *dev,
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
 	u8 new;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtou8(buf, 10, &new);
 	if (ret < 0)
@@ -209,7 +205,6 @@ static ssize_t plw_pipe1_show(struct device *dev,
 {
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
-	struct nrf24_pipe *pipe;
 
 	ret = nrf24_get_rx_pload_width(device->spi, 1);
 	if (ret < 0)
@@ -227,7 +222,6 @@ static ssize_t plw_pipe1_store(struct device *dev,
 	int ret;
 	u8 new;
 	ssize_t old;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtou8(buf, 10, &new);
 	if (ret < 0)
@@ -258,7 +252,6 @@ static ssize_t address_pipe1_show(struct device *dev,
 	int ret;
 	int count;
 	int i;
-	struct nrf24_pipe *pipe;
 
 	ret = nrf24_get_address(device->spi, 1, addr);
 	if (ret < 0)
@@ -281,7 +274,6 @@ static ssize_t address_pipe1_store(struct device *dev,
 	int ret;
 	u64 address;
 	int len;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtoull(buf, 16, &address);
 	if (ret < 0)
@@ -320,7 +312,6 @@ static ssize_t ack_pipe2_show(struct device *dev,
 {
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
-	struct nrf24_pipe *pipe;
 
 
 	ret = nrf24_get_auto_ack(device->spi, 2);
@@ -338,7 +329,6 @@ static ssize_t ack_pipe2_store(struct device *dev,
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
 	u8 new;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtou8(buf, 10, &new);
 	if (ret < 0)
@@ -361,7 +351,6 @@ static ssize_t plw_pipe2_show(struct device *dev,
 {
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
-	struct nrf24_pipe *pipe;
 
 	ret = nrf24_get_rx_pload_width(device->spi, 2);
 	if (ret < 0)
@@ -379,7 +368,6 @@ static ssize_t plw_pipe2_store(struct device *dev,
 	int ret;
 	u8 new;
 	ssize_t old;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtou8(buf, 10, &new);
 	if (ret < 0)
@@ -410,7 +398,6 @@ static ssize_t address_pipe2_show(struct device *dev,
 	int ret;
 	int count;
 	int i;
-	struct nrf24_pipe *pipe;
 
 	ret = nrf24_get_address(device->spi, 2, addr);
 	if (ret < 0)
@@ -433,7 +420,6 @@ static ssize_t address_pipe2_store(struct device *dev,
 	int ret;
 	u64 address;
 	int len;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtoull(buf, 16, &address);
 	if (ret < 0)
@@ -470,7 +456,6 @@ static ssize_t ack_pipe3_show(struct device *dev,
 {
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
-	struct nrf24_pipe *pipe;
 
 
 	ret = nrf24_get_auto_ack(device->spi, 3);
@@ -488,7 +473,6 @@ static ssize_t ack_pipe3_store(struct device *dev,
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
 	u8 new;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtou8(buf, 10, &new);
 	if (ret < 0)
@@ -509,7 +493,6 @@ static ssize_t plw_pipe3_show(struct device *dev,
 {
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
-	struct nrf24_pipe *pipe;
 
 	ret = nrf24_get_rx_pload_width(device->spi, 3);
 	if (ret < 0)
@@ -527,7 +510,6 @@ static ssize_t plw_pipe3_store(struct device *dev,
 	int ret;
 	u8 new;
 	ssize_t old;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtou8(buf, 10, &new);
 	if (ret < 0)
@@ -557,7 +539,6 @@ static ssize_t address_pipe3_show(struct device *dev,
 	int ret;
 	int count;
 	int i;
-	struct nrf24_pipe *pipe;
 
 	ret = nrf24_get_address(device->spi, 3, addr);
 	if (ret < 0)
@@ -580,7 +561,6 @@ static ssize_t address_pipe3_store(struct device *dev,
 	int ret;
 	u64 address;
 	int len;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtoull(buf, 16, &address);
 	if (ret < 0)
@@ -619,7 +599,6 @@ static ssize_t ack_pipe4_show(struct device *dev,
 {
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
-	struct nrf24_pipe *pipe;
 
 
 	ret = nrf24_get_auto_ack(device->spi, 4);
@@ -637,7 +616,6 @@ static ssize_t ack_pipe4_store(struct device *dev,
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
 	u8 new;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtou8(buf, 10, &new);
 	if (ret < 0)
@@ -660,7 +638,6 @@ static ssize_t plw_pipe4_show(struct device *dev,
 {
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
-	struct nrf24_pipe *pipe;
 
 	ret = nrf24_get_rx_pload_width(device->spi, 4);
 	if (ret < 0)
@@ -678,7 +655,6 @@ static ssize_t plw_pipe4_store(struct device *dev,
 	int ret;
 	u8 new;
 	ssize_t old;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtou8(buf, 10, &new);
 	if (ret < 0)
@@ -709,7 +685,6 @@ static ssize_t address_pipe4_show(struct device *dev,
 	int ret;
 	int count;
 	int i;
-	struct nrf24_pipe *pipe;
 
 	ret = nrf24_get_address(device->spi, 4, addr);
 	if (ret < 0)
@@ -732,7 +707,6 @@ static ssize_t address_pipe4_store(struct device *dev,
 	int ret;
 	u64 address;
 	int len;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtoull(buf, 16, &address);
 	if (ret < 0)
@@ -771,7 +745,6 @@ static ssize_t ack_pipe5_show(struct device *dev,
 {
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
-	struct nrf24_pipe *pipe;
 
 
 	ret = nrf24_get_auto_ack(device->spi, 5);
@@ -789,9 +762,8 @@ static ssize_t ack_pipe5_store(struct device *dev,
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
 	uint8_t new;
-	struct nrf24_pipe *pipe;
 
-	ret = kstrtouint8_t(buf, 10, &new);
+	ret = kstrtou8(buf, 10, &new);
 	if (ret < 0)
 		return ret;
 	if (new < 0 || new > 1)
@@ -810,7 +782,6 @@ static ssize_t plw_pipe5_show(struct device *dev,
 {
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
-	struct nrf24_pipe *pipe;
 
 	ret = nrf24_get_rx_pload_width(device->spi, 5);
 	if (ret < 0)
@@ -826,11 +797,10 @@ static ssize_t plw_pipe5_store(struct device *dev,
 {
 	struct nrf24_device *device = to_nrf24_device(dev->parent);
 	int ret;
-	uint8_t new;
+	u8 new;
 	ssize_t old;
-	struct nrf24_pipe *pipe;
 
-	ret = kstrtouint8_t(buf, 10, &new);
+	ret = kstrtou8(buf, 10, &new);
 	if (ret < 0)
 		return ret;
 
@@ -859,7 +829,6 @@ static ssize_t address_pipe5_show(struct device *dev,
 	int ret;
 	int count;
 	int i;
-	struct nrf24_pipe *pipe;
 
 	ret = nrf24_get_address(device->spi, 5, addr);
 	if (ret < 0)
@@ -882,7 +851,6 @@ static ssize_t address_pipe5_store(struct device *dev,
 	int ret;
 	u64 address;
 	int len;
-	struct nrf24_pipe *pipe;
 
 	ret = kstrtoull(buf, 16, &address);
 	if (ret < 0)
@@ -1455,7 +1423,7 @@ struct attribute *nrf24_attrs[] = {
 const struct attribute_group nrf24_dev_general =
 {
 	.attrs = nrf24_attrs,
-	name   = "nrf24_general"
+	.name   = "nrf24_general"
 };
 
 const struct attribute_group* nrf_24_device_attr_group[] = {

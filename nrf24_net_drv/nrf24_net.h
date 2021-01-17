@@ -7,14 +7,18 @@
 #define SKB_BUFFER_SIZE     1024
 #define NRF24L1_MSG_DEFAULT	\
 	(NETIF_MSG_PROBE | NETIF_MSG_IFUP | NETIF_MSG_IFDOWN | NETIF_MSG_LINK)
+
+#define TX_TIMEOUT			(4000 * 15)
 	
-typedef struct nrf24_pipe_cfg {
+struct nrf24_pipe_cfg 
+{
 	uint64_t		address;
 	uint8_t			ack;
 	ssize_t			plw;
 };
 
-typedef struct nrf24_pipe {
+struct nrf24_pipe 
+{
 	int			            id;
 	struct nrf24_pipe_cfg	cfg;
 
@@ -52,7 +56,7 @@ struct nrf24_device {
 
 	struct nrf24_device_cfg	cfg; // config device
 
-	struct nrf24_pipe	pipe[6]; //pipe data
+	struct nrf24_pipe		pipe[6]; //pipe data
 	/* for irqsave */
 	spinlock_t		    	lock;
 
@@ -61,18 +65,20 @@ struct nrf24_device {
     struct work_struct  	tx_work;// work struct when receive new packet when to transmit
 
 	/* tx */
+	struct task_struct		*tx_task_struct;
 	struct mutex			tx_fifo_mutex;//because, we will create tx thread 
 	wait_queue_head_t		tx_wait_queue;//help to make start change module to TX
 	wait_queue_head_t		tx_done_wait_queue;// help to know module transmit packet finish
-	atomic_t				tx_done; 
-	atomic_t				tx_failed;
+	volatile bool			tx_done; 
+	volatile bool			tx_failed;
 
 	/* rx */	
 	struct timer_list		rx_active_timer;// time to run module in RX mode
-	atomic_t				rx_active; //the flag help to know system is active
+	volatile bool			rx_active; //the flag help to know system is active
 
 	uint32_t 				msg_enable;
 
+	struct sk_buff			*tx_skb;
 	STRUCT_KFIFO_REC_1(FIFO_SIZE) tx_fifo;
 };
 
