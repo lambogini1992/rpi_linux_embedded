@@ -42,7 +42,7 @@ struct nrf24_tx_data {
 
 struct nrf24_device {
 	dev_t					dev_num;
-	struct class			*dev_class;
+	struct class 			*nrf24_class;
 	struct device			dev;
 	
     struct net_device 		*net_dev;

@@ -26,13 +26,10 @@
 #include "nrf24_sysfs.h"
 #include "nrf24_hal.h"
 
+
 static int debug = -1;     /* defaults above */;
 
 extern const struct attribute_group* nrf_24_device_attr_group[];
-
-static struct device_type nrf24_dev_type = {
-	.name = "nrf24_device",
-};
 
 static void nrf24_ce_hi(struct nrf24_device *device);
 static void nrf24_ce_lo(struct nrf24_device *device);
@@ -321,7 +318,7 @@ static void nrf24_tx_work_handler(struct work_struct *work)
 	struct nrf24_device *device;
 	struct nrf24_tx_data tx_data;
 	printk(KERN_INFO "%s", __func__);
-	device = container_of(work, struct nrf24_device, rx_work);
+	device = container_of(work, struct nrf24_device, tx_work);
 
 	if(!device)
 	{
@@ -480,6 +477,15 @@ static const struct net_device_ops nrf24l01_netdev_ops = {
 	.ndo_validate_addr	= eth_validate_addr,
 };
 
+static void nrf24_dev_release(struct device *dev)
+{
+	printk(KERN_INFO "%s\n", __func__);
+}
+
+static struct device_type nrf24_dev_type = {
+	.name = "nrf24_device",
+	.release = nrf24_dev_release,
+};
 
 /*IRQ callback function*/
 static irqreturn_t nrf24_isr(int irq, void *dev_id)
@@ -547,7 +553,7 @@ static struct nrf24_device *nrf24_network_init(struct spi_device *spi)
 	if(!dev)
 	{
 		dev_err(&spi->dev, "%s: cannot allocate ethernet device struct", __func__);
-		return ERR_PTR(-ENOMEM); 
+		goto failed_alloc_netdev; 
 	}
 
 	priv = netdev_priv(dev);
@@ -558,7 +564,8 @@ static struct nrf24_device *nrf24_network_init(struct spi_device *spi)
 	
 	dev_set_name(&priv->dev, "nrf24l01");
 	priv->dev.parent = &spi->dev;
-	priv->dev.class = class_create(THIS_MODULE, "nrf24l01_device_class");
+	priv->nrf24_class = class_create(THIS_MODULE, "nrf24l01_device_class");
+	priv->dev.class = priv->nrf24_class;
 	priv->dev.type = &nrf24_dev_type;
 	priv->dev.groups = nrf_24_device_attr_group;
 	ret = device_register(&priv->dev);
@@ -601,7 +608,7 @@ static struct nrf24_device *nrf24_network_init(struct spi_device *spi)
 			goto FAILED_REGISTER_NETDEV;
 		}	
 	}
-
+	dev_info(&spi->dev, "%s: register netdev success\n",__func__);
 	timer_setup(&priv->rx_active_timer, nrf24_rx_active_timer_cb, 0);
 	
 	spi_set_drvdata(spi, priv);
@@ -612,7 +619,8 @@ FAILED_TO_INTI_HANDLE_GPIO:
 	device_unregister(&priv->dev);
 FAILED_TO_DEVICE_REGISTER:
 	put_device(&priv->dev);
-	return 0;
+failed_alloc_netdev:
+	return NULL;
 }
 
 static int nrf24_probe(struct spi_device *spi)
@@ -620,7 +628,7 @@ static int nrf24_probe(struct spi_device *spi)
     int ret;
 	struct nrf24_device *device;
 
-	
+	dev_info(&spi->dev, "%s: Loading Probe Function\n", __func__);
 	spi->mode = SPI_MODE_0;
 	spi->bits_per_word = 8;
 
@@ -652,7 +660,7 @@ err_devs_destroy:
 	unregister_netdev(device->net_dev);
 	nrf24_gpio_free(device);
 	device_unregister(&device->dev);
-	put_device(&device->dev);
+	class_destroy(device->nrf24_class);
 	free_netdev(device->net_dev);
 	return ret;
 }
@@ -661,12 +669,18 @@ static int nrf24_remove(struct spi_device *spi)
 {
 	struct nrf24_device *device = spi_get_drvdata(spi);
 
+	kthread_stop(device->tx_task_struct);
+	dev_info(&spi->dev, "%s: kthread_stop\n", __func__);
 	unregister_netdev(device->net_dev);
+	dev_info(&spi->dev, "%s: unregister_netdev\n", __func__);
 	nrf24_gpio_free(device);
+	dev_info(&spi->dev, "%s: nrf24_gpio_free\n", __func__);
 	device_unregister(&device->dev);
-	put_device(&device->dev);
+	dev_info(&spi->dev, "%s: device_unregister\n", __func__);
+	class_destroy(device->nrf24_class);
+	dev_info(&spi->dev, "%s: class_destroy\n", __func__);
 	free_netdev(device->net_dev);
-
+	dev_info(&spi->dev, "%s: free_netdev\n", __func__);
 	return 0;
 }
 
