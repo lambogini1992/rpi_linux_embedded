@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "module.h": "c",
+        "errno.h": "c",
+        "types.h": "c"
+    }
+}

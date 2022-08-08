@@ -1,0 +1,1 @@
+cmd_/home/anhpt26/raspberry/fake_net/fake_net.ko := arm-linux-gnueabihf-ld -r  -EL  --build-id  -T ./scripts/module-common.lds -T ./arch/arm/kernel/module.lds -o /home/anhpt26/raspberry/fake_net/fake_net.ko /home/anhpt26/raspberry/fake_net/fake_net.o /home/anhpt26/raspberry/fake_net/fake_net.mod.o;  true
